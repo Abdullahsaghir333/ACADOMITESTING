@@ -9,6 +9,7 @@ AI-powered personalized learning platform (Final Year Project). Monorepo layout 
 | `frontend/` | Next.js (App Router, Tailwind v4) — UI |
 | `backend/` | Express + MongoDB + **Google Gemini** (uploads & auth) |
 | `python/services/podcast/` | Flask microservice: Gemini dialogue script + gTTS audio (port 5001) |
+| `python/services/tutor/` | FastAPI: gTTS narration + MediaPipe webcam focus (port 5002) |
 
 ## Prerequisites
 
@@ -28,6 +29,7 @@ Copy `backend/.env.example` to `backend/.env` and set:
 | `FRONTEND_URL` | Next.js origin for CORS (e.g. `http://localhost:3000`) |
 | `GEMINI_MODEL` | Optional; defaults to `gemini-2.5-flash` |
 | `PODCAST_SERVICE_URL` | Base URL of the Python podcast API (default `http://127.0.0.1:5001`) |
+| `TUTOR_SERVICE_URL` | Base URL of the Python tutor API (default `http://127.0.0.1:5002`) |
 
 Never commit `.env`.
 
@@ -77,11 +79,26 @@ python app.py
 
 From the repo root (after the venv exists): `npm run dev:podcast`. The Node API must reach it (`PODCAST_SERVICE_URL` in `backend/.env`).
 
+### Tutor service (optional — AI Meet + focus)
+
+The tutor page uses **MediaPipe FaceMesh** via the legacy **Solutions** API (`mediapipe.solutions`). That stack only works on **Python 3.10–3.12** and only with **`mediapipe` before 0.10.30** — newer PyPI wheels (0.10.30+) dropped `mediapipe.solutions` in favor of Tasks, so this project pins **`mediapipe>=0.10.21,<0.10.30`** in `python/services/tutor/requirements.txt`.
+
+```bash
+cd python/services/tutor
+py -3.12 -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+python -m uvicorn app:app --host 127.0.0.1 --port 5002
+```
+
+From the repo root (after `.venv` exists): `npm run dev:tutor`. Set `TUTOR_SERVICE_URL` in `backend/.env` (see `.env.example`). Check [http://127.0.0.1:5002/health](http://127.0.0.1:5002/health) — `mediapipe.ok` should be `true` when the interpreter and pinned package versions match.
+
 ## Current features (this milestone)
 
 - **Auth:** Register, login (JWT in `localStorage`), profile & password on **Settings**.
 - **Uploads (max 7 per user):** PDF (text via `pdf-parse`), images & audio via **Gemini**; optional prompt; stored extracted text + Gemini “processed notes” in MongoDB.
 - **Podcast mode:** Pick a **completed** upload; backend calls the Python service (Gemini script + gTTS), stores **MP3 in MongoDB GridFS**, lists **Your podcasts** with replay and delete.
+- **AI tutor (Meet-style):** Completed upload → slides + spoken narration + optional webcam focus; live Q&A via Gemini on the Node API; Python service handles TTS and focus frames (`TUTOR_SERVICE_URL`).
 - **Role reversal teaching:** Pick a topic + **completed** upload, **record** your explanation; Gemini transcribes, compares to your material, returns **scores + radar/bar charts + feedback**; saved in MongoDB; **Improve** re-records and updates the same session.
 - **Navigation:** Dashboard, Uploads, Podcast mode, Settings, and platform roadmap links.
 
@@ -105,6 +122,7 @@ docker compose up -d
 - **`ERR_CONNECTION_REFUSED` to port 4000:** the API is not running; start the backend with `npm run dev:backend`.
 - **`JWT_SECRET not set` or auth returns 500:** add `JWT_SECRET=...` to `backend/.env`. The API reads it **on each request** (not at import time) so it stays in sync after `dotenv` loads. Check `/health` — `jwt` should be `"configured"`.
 - **Podcast service `WinError 2` / ffprobe not found:** install a full **FFmpeg** build (includes **ffprobe**), add its `bin` folder to PATH, and restart the terminal. Or set **`ACADOMI_FFMPEG`** in `python/services/podcast/.env` to **`ffmpeg.exe`** or to that **`bin`** folder (see `python/services/podcast/README.md`).
+- **Tutor focus returns 503 / `No module named 'mediapipe.solutions'`:** use **Python 3.10–3.12** and install from `python/services/tutor/requirements.txt`, which pins **`mediapipe<0.10.30`** (0.10.30+ wheels removed the Solutions API). If you already upgraded with `pip install -U mediapipe`, run `pip install 'mediapipe>=0.10.21,<0.10.30'` inside the tutor venv, restart `uvicorn`, and recheck `/health`.
 
 ## Security
 

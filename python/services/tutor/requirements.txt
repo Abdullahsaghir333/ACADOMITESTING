@@ -4,8 +4,9 @@ python-multipart>=0.0.12
 pydantic>=2.0
 python-dotenv>=1.0.0
 opencv-python>=4.8.0
-# Pin avoids broken / incomplete wheels; use Python 3.10–3.12 for official builds.
-# If `import mediapipe` works but FaceMesh fails, run: pip uninstall mediapipe -y && pip install -r requirements.txt
-mediapipe>=0.10.14,<0.11
-numpy>=1.24.0
+# FaceMesh uses legacy Solutions API. Google removed mediapipe.solutions from wheels 0.10.30+.
+# Last line with the Python 3.x FaceMesh stack: 0.10.21 (0.10.22–0.10.29 not published on PyPI).
+# Also requires Python 3.10–3.12; mediapipe 0.10.21 pins numpy<2.
+mediapipe>=0.10.21,<0.10.30; python_version<"3.13"
+numpy>=1.24.0,<2
 gTTS>=2.5.0
