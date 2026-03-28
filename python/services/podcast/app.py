@@ -40,8 +40,19 @@ def generate_podcast():
     if not isinstance(text, str) or not text.strip():
         return jsonify({"error": "text must be a non-empty string"}), 400
 
+    sk = data.get("geminiApiKey")
+    sm = data.get("geminiModel")
+    if sk is not None and not isinstance(sk, str):
+        return jsonify({"error": "geminiApiKey must be a string if provided"}), 400
+    if sm is not None and not isinstance(sm, str):
+        return jsonify({"error": "geminiModel must be a string if provided"}), 400
+
     try:
-        payload = build_podcast_payload(text)
+        payload = build_podcast_payload(
+            text,
+            gemini_api_key=sk.strip() if isinstance(sk, str) else None,
+            gemini_model=sm.strip() if isinstance(sm, str) else None,
+        )
         return jsonify(payload)
     except Exception as e:
         print("[podcast] error:", e)

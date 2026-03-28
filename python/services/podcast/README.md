@@ -9,7 +9,7 @@ Generates a two-speaker script with **Google Gemini** and audio with **gTTS** + 
   If you stay on **3.13 or newer**, `requirements.txt` pulls in **`audioop-lts`** automatically (stdlib `audioop` was removed; without it, pydub fails with `No module named 'audioop'` / `pyaudioop`).
 - **ffmpeg** on your `PATH` (required by pydub).  
   - Windows: `choco install ffmpeg` or download from [ffmpeg.org](https://ffmpeg.org/) and add `bin` to PATH.
-- **GEMINI_API_KEY** in `.env` (same key as the Node backend is fine for local dev)
+- **`GEMINI_API_KEY` in `backend/.env`** when you use the Acadomi API (the server forwards it to this service). Put the key in **this folder’s `.env` only** if you run `python app.py` standalone without the Node proxy.
 
 ## Setup
 
@@ -26,7 +26,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Copy `.env.example` to `.env` and set `GEMINI_API_KEY`.
+Copy `.env.example` to `.env` only if you need local overrides (e.g. standalone runs); otherwise rely on `backend/.env` via the API.
 
 ## Run
 

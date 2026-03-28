@@ -21,16 +21,28 @@ AudioSegment.converter = _ff
 AudioSegment.ffmpeg = _ff
 
 
-def _configure_gemini() -> str:
-    key = os.environ.get("GEMINI_API_KEY", "").strip()
+def _configure_gemini(
+    override_key: str | None = None,
+    override_model: str | None = None,
+) -> str:
+    key = (override_key or "").strip() or os.environ.get("GEMINI_API_KEY", "").strip()
     if not key:
-        raise RuntimeError("GEMINI_API_KEY is not set for the podcast service")
+        raise RuntimeError(
+            "GEMINI_API_KEY is not set. Either add it to backend/.env (the API forwards it) "
+            "or set it in python/services/podcast/.env when running the podcast app alone."
+        )
     genai.configure(api_key=key)
-    return os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    model = (override_model or "").strip() or os.environ.get("GEMINI_MODEL", "").strip()
+    return model or "gemini-2.5-flash"
 
 
-def generate_script_from_gemini(source_text: str) -> list[dict[str, str]]:
-    model_name = _configure_gemini()
+def generate_script_from_gemini(
+    source_text: str,
+    *,
+    gemini_api_key: str | None = None,
+    gemini_model: str | None = None,
+) -> list[dict[str, str]]:
+    model_name = _configure_gemini(gemini_api_key, gemini_model)
     model = genai.GenerativeModel(model_name)
 
     text = source_text.strip()
@@ -140,8 +152,17 @@ def create_podcast_mp3_bytes(script: list[dict[str, str]]) -> tuple[bytes, int]:
             pass
 
 
-def build_podcast_payload(source_text: str) -> dict[str, Any]:
-    script = generate_script_from_gemini(source_text)
+def build_podcast_payload(
+    source_text: str,
+    *,
+    gemini_api_key: str | None = None,
+    gemini_model: str | None = None,
+) -> dict[str, Any]:
+    script = generate_script_from_gemini(
+        source_text,
+        gemini_api_key=gemini_api_key,
+        gemini_model=gemini_model,
+    )
     audio_bytes, duration_ms = create_podcast_mp3_bytes(script)
     return {
         "script": script,

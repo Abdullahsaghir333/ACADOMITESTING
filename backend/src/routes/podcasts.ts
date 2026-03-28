@@ -78,14 +78,28 @@ router.post("/generate", authMiddleware, async (req: AuthedRequest, res: Respons
       });
     }
 
+    const geminiKey = process.env.GEMINI_API_KEY?.trim();
+    if (!geminiKey) {
+      return res.status(500).json({
+        error: "GEMINI_API_KEY is not configured on the API server. Add it to backend/.env.",
+      });
+    }
+
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 5 * 60 * 1000);
+    const pyBody: { text: string; geminiApiKey: string; geminiModel?: string } = {
+      text: material,
+      geminiApiKey: geminiKey,
+    };
+    const geminiModel = process.env.GEMINI_MODEL?.trim();
+    if (geminiModel) pyBody.geminiModel = geminiModel;
+
     let pyRes: globalThis.Response;
     try {
       pyRes = await fetch(`${pyBase.replace(/\/$/, "")}/generate-podcast`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: material }),
+        body: JSON.stringify(pyBody),
         signal: ctrl.signal,
       });
     } finally {
