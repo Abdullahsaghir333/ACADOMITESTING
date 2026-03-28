@@ -11,6 +11,7 @@ import bookmarkRoutes from "./routes/bookmarks.js";
 import podcastRoutes from "./routes/podcasts.js";
 import roleReversalRoutes from "./routes/roleReversal.js";
 import cheatSheetRoutes from "./routes/cheatSheets.js";
+import friendRoutes from "./routes/friends.js";
 import tutorRoutes from "./routes/tutor.js";
 import uploadRoutes from "./routes/uploads.js";
 
@@ -59,6 +60,7 @@ app.use("/api/podcasts", podcastRoutes);
 app.use("/api/role-reversal", roleReversalRoutes);
 app.use("/api/tutor", tutorRoutes);
 app.use("/api/cheat-sheets", cheatSheetRoutes);
+app.use("/api/friends", friendRoutes);
 
 async function start() {
   if (MONGODB_URI) {
