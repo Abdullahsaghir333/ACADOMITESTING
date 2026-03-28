@@ -69,6 +69,12 @@ export function MarketingHeader() {
                 Role reversal
               </Link>
               <Link
+                href="/tutor"
+                className="rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                AI tutor
+              </Link>
+              <Link
                 href="/settings"
                 className="rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
               >

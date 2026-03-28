@@ -37,6 +37,7 @@ const protectedPrefixes = [
   "/upload",
   "/podcast",
   "/role-reversal",
+  "/tutor",
 ];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

@@ -12,6 +12,7 @@
     "dev:frontend": "npm run dev --workspace=frontend",
     "dev:backend": "npm run dev --workspace=backend",
     "dev:podcast": "python/services/podcast/.venv/Scripts/python.exe python/services/podcast/app.py",
+    "dev:tutor": "python/services/tutor/.venv/Scripts/python.exe -m uvicorn app:app --host 127.0.0.1 --port 5002 --app-dir python/services/tutor",
     "build": "npm run build --workspace=frontend",
     "build:frontend": "npm run build --workspace=frontend",
     "build:backend": "npm run build --workspace=backend",

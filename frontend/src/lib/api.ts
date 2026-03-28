@@ -278,3 +278,186 @@ export async function apiDeleteRoleReversalSession(
   });
   return parseJson(res);
 }
+
+export type TutorSlideDTO = {
+  title: string;
+  points: string[];
+  script: string;
+};
+
+export type TutorSessionDTO = {
+  id: string;
+  sourceUploadId: string;
+  topicFocus: string;
+  displayTitle: string;
+  slides: TutorSlideDTO[];
+  status: string;
+  errorMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TutorFocusDTO = {
+  faceFound: boolean;
+  focusVal: number | null;
+  status: string;
+  alarm: boolean;
+  isCalibrated: boolean;
+  /** Live telemetry from MediaPipe / head pose / EAR (when present) */
+  pitch?: number;
+  yaw?: number;
+  roll?: number;
+  deltaPitch?: number;
+  deltaYaw?: number;
+  baselinePitch?: number;
+  baselineYaw?: number;
+  baselineEar?: number;
+  ear?: number;
+  deltaEar?: number;
+  gazeVariance?: number;
+  timeSinceBlinkSec?: number;
+  timeSinceGazeMoveSec?: number;
+  poseScore?: number;
+  eyeScore?: number;
+  gazeScore?: number;
+  rawFocus?: number;
+  calibrationProgress?: number;
+  stareAlarm?: boolean;
+};
+
+export async function apiListTutorSessions(
+  token: string,
+): Promise<{ sessions: TutorSessionDTO[]; maxSessions: number }> {
+  const res = await fetch(`${API_BASE}/api/tutor/sessions`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseJson(res);
+}
+
+export async function apiGetTutorSession(
+  token: string,
+  id: string,
+): Promise<{ session: TutorSessionDTO }> {
+  const res = await fetch(`${API_BASE}/api/tutor/sessions/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseJson(res);
+}
+
+export async function apiCreateTutorSession(
+  token: string,
+  body: { uploadId: string; topicFocus?: string },
+): Promise<{ session: TutorSessionDTO }> {
+  const res = await fetch(`${API_BASE}/api/tutor/sessions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  return parseJson(res);
+}
+
+export async function apiDeleteTutorSession(
+  token: string,
+  id: string,
+): Promise<{ ok: boolean }> {
+  const res = await fetch(`${API_BASE}/api/tutor/sessions/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseJson(res);
+}
+
+export async function apiTutorFocusReset(
+  token: string,
+  sessionId: string,
+): Promise<{ ok: boolean }> {
+  const res = await fetch(`${API_BASE}/api/tutor/sessions/${sessionId}/focus/reset`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseJson(res);
+}
+
+export async function apiTutorFocusAnalyze(
+  token: string,
+  sessionId: string,
+  frameBlob: Blob,
+): Promise<TutorFocusDTO> {
+  const fd = new FormData();
+  fd.append("frame", frameBlob, "frame.jpg");
+  const res = await fetch(`${API_BASE}/api/tutor/sessions/${sessionId}/focus/analyze`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  });
+  return parseJson(res);
+}
+
+/** Caller should revoke the object URL when done. */
+export async function apiFetchTutorSlideAudioBlobUrl(
+  token: string,
+  sessionId: string,
+  slideIndex: number,
+): Promise<string> {
+  const res = await fetch(
+    `${API_BASE}/api/tutor/sessions/${sessionId}/slides/${slideIndex}/tts`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  if (!res.ok) {
+    let msg = res.statusText;
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (j.error) msg = j.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+/** Short arbitrary text (e.g. answer) → MP3 blob URL. Caller must revoke. */
+export async function apiFetchTutorTtsBlobUrl(token: string, text: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/tutor/tts`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (j.error) msg = j.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+export async function apiTutorAsk(
+  token: string,
+  params: { sessionId: string; slideIndex: number; audio: Blob },
+): Promise<{ question: string; answer: string }> {
+  const fd = new FormData();
+  fd.append("slideIndex", String(params.slideIndex));
+  fd.append("audio", params.audio, "question.webm");
+  const res = await fetch(`${API_BASE}/api/tutor/sessions/${params.sessionId}/ask`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  });
+  return parseJson(res);
+}
