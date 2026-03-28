@@ -397,6 +397,22 @@ export async function apiTutorFocusAnalyze(
 }
 
 /** Caller should revoke the object URL when done. */
+/** Gemini: simpler spoken script for one slide ("explain like I'm five"). */
+export async function apiTutorSlideEli5(
+  token: string,
+  sessionId: string,
+  slideIndex: number,
+): Promise<{ script: string }> {
+  const res = await fetch(
+    `${API_BASE}/api/tutor/sessions/${sessionId}/slides/${slideIndex}/eli5`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return parseJson(res);
+}
+
 export async function apiFetchTutorSlideAudioBlobUrl(
   token: string,
   sessionId: string,

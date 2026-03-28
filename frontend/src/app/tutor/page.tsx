@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import {
+  Baby,
   ChevronLeft,
   ChevronRight,
   GraduationCap,
@@ -39,6 +40,7 @@ import {
   apiTutorAsk,
   apiTutorFocusAnalyze,
   apiTutorFocusReset,
+  apiTutorSlideEli5,
   getToken,
   type TutorFocusDTO,
   type TutorSessionDTO,
@@ -53,6 +55,8 @@ function tokenizeScript(script: string): string[] {
 const SUBTITLE_WORDS_PER_PHRASE = 8;
 /** Nudge display slightly early so captions feel aligned with speech (no true word timestamps from TTS). */
 const SUBTITLE_LEAD_RATIO = 0.035;
+
+const ELI5_ACK_TEXT = "Sure — I'll explain this slide in simpler, easy words.";
 
 function buildPhraseLines(words: string[], wordsPerPhrase: number): string[] {
   if (words.length === 0) return [];
@@ -101,6 +105,10 @@ export default function TutorPage() {
   const [playingAnswer, setPlayingAnswer] = React.useState(false);
   const [answerPaused, setAnswerPaused] = React.useState(false);
   const [questionSubmitting, setQuestionSubmitting] = React.useState(false);
+  /** Simpler script for the current slide only; cleared when changing slides. */
+  const [eli5Script, setEli5Script] = React.useState<string | null>(null);
+  const [eli5ForSlideIndex, setEli5ForSlideIndex] = React.useState<number | null>(null);
+  const [eli5Busy, setEli5Busy] = React.useState(false);
 
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
@@ -384,6 +392,23 @@ export default function TutorPage() {
     };
   }, [activeSession?.id, slideIndex, activeSession?.slides.length]);
 
+  React.useEffect(() => {
+    setEli5Script(null);
+    setEli5ForSlideIndex(null);
+    setNarrationUrls((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const k of Object.keys(next)) {
+        if (k.includes(":eli5")) {
+          URL.revokeObjectURL(next[k]!);
+          delete next[k];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [slideIndex, activeSession?.id]);
+
   async function openSession(s: TutorSessionDTO) {
     stopNarration();
     setError(null);
@@ -530,31 +555,143 @@ export default function TutorPage() {
     setAnswerPaused(true);
   }
 
-  async function playNarration(idx: number) {
+  /** Pause whatever is on the audio element but keep answer blob URLs for later replay. */
+  function haltPlaybackForEli5() {
+    const a = audioRef.current;
+    const s = activeSessionRef.current;
+    if (a && s && audioRoleRef.current === "slide" && playingSlideRef.current !== null && !a.ended) {
+      const idx = playingSlideRef.current;
+      narrationProgressRef.current[`${s.id}:${idx}`] = a.currentTime;
+    }
+    if (a && audioRoleRef.current === "answer") {
+      answerResumeTimeRef.current = a.currentTime;
+      setAnswerPaused(true);
+      setPlayingAnswer(false);
+    }
+    lectureResumeRef.current = null;
+    cancelSubtitleRaf();
+    clearAudioHandlers();
+    if (a) {
+      a.pause();
+      a.removeAttribute("src");
+      a.load();
+    }
+    audioRoleRef.current = null;
+    setPlayingSlide(null);
+    setNarrationSubtitleLine("");
+    setAnswerSubtitleLine("");
+  }
+
+  async function playOneShotAck(ackObjectUrl: string): Promise<void> {
+    const a = audioRef.current;
+    if (!a) {
+      URL.revokeObjectURL(ackObjectUrl);
+      return;
+    }
+    try {
+      cancelSubtitleRaf();
+      clearAudioHandlers();
+      audioRoleRef.current = null;
+      a.pause();
+      a.src = ackObjectUrl;
+      await new Promise<void>((resolve, reject) => {
+        a.onended = () => {
+          a.onended = null;
+          a.onerror = null;
+          resolve();
+        };
+        a.onerror = () => {
+          a.onended = null;
+          a.onerror = null;
+          reject(new Error("Ack audio failed"));
+        };
+        void a.play().catch((err) => reject(err instanceof Error ? err : new Error(String(err))));
+      });
+    } finally {
+      URL.revokeObjectURL(ackObjectUrl);
+      a.pause();
+      a.onended = null;
+      a.onerror = null;
+      a.removeAttribute("src");
+      a.load();
+    }
+  }
+
+  async function startExplainLikeImFive() {
+    const s = activeSession;
+    const t = getToken();
+    if (!s || !t || eli5Busy || questionSubmitting) return;
+    const idx = slideIndex;
+    const slide = s.slides[idx];
+    if (!slide) return;
+    setEli5Busy(true);
+    setError(null);
+    try {
+      haltPlaybackForEli5();
+      const eli5Promise = apiTutorSlideEli5(t, s.id, idx);
+      const ackUrl = await apiFetchTutorTtsBlobUrl(t, ELI5_ACK_TEXT);
+      const [eli5Res] = await Promise.all([eli5Promise, playOneShotAck(ackUrl)]);
+      setEli5Script(eli5Res.script);
+      setEli5ForSlideIndex(idx);
+      const key = `${s.id}:${idx}`;
+      narrationProgressRef.current[key] = 0;
+      setNarrationUrls((prev) => {
+        const k = `${key}:eli5`;
+        if (!prev[k]) return prev;
+        const next = { ...prev };
+        URL.revokeObjectURL(next[k]!);
+        delete next[k];
+        return next;
+      });
+      await playNarration(idx, { scriptOverride: eli5Res.script, treatAsEli5: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not prepare a simpler explanation.");
+    } finally {
+      setEli5Busy(false);
+    }
+  }
+
+  async function playNarration(
+    idx: number,
+    opts?: { scriptOverride?: string; treatAsEli5?: boolean },
+  ) {
     const s = activeSession;
     const t = getToken();
     if (!s || !t) return;
     const key = `${s.id}:${idx}`;
+    const slideScript = s.slides[idx]?.script ?? "";
+    const scriptText =
+      opts?.scriptOverride !== undefined && opts.scriptOverride.length > 0
+        ? opts.scriptOverride
+        : eli5ForSlideIndex === idx && eli5Script
+          ? eli5Script
+          : slideScript;
+    const isEli5Track =
+      opts?.treatAsEli5 === true ||
+      (eli5ForSlideIndex === idx && eli5Script !== null && scriptText === eli5Script);
+    const audioKey = isEli5Track ? `${key}:eli5` : key;
     setNarrationLoading(true);
     setPlayingSlide(idx);
     setPlayingAnswer(false);
     setAnswerPaused(false);
     setAnswerSubtitleLine("");
     setError(null);
-    const words = tokenizeScript(s.slides[idx]?.script ?? "");
+    const words = tokenizeScript(scriptText);
     setNarrationSubtitleLine("");
     try {
-      let url = narrationUrlsRef.current[key];
+      let url = narrationUrlsRef.current[audioKey];
       if (!url) {
-        url = await apiFetchTutorSlideAudioBlobUrl(t, s.id, idx);
-        setNarrationUrls((prev) => ({ ...prev, [key]: url! }));
+        url = isEli5Track
+          ? await apiFetchTutorTtsBlobUrl(t, scriptText)
+          : await apiFetchTutorSlideAudioBlobUrl(t, s.id, idx);
+        setNarrationUrls((prev) => ({ ...prev, [audioKey]: url! }));
       }
       const a = audioRef.current;
       if (a) {
         clearAudioHandlers();
         audioRoleRef.current = "slide";
         a.src = url;
-        const saved = narrationProgressRef.current[key] ?? 0;
+        const saved = narrationProgressRef.current[audioKey] ?? 0;
         const onReady = () => {
           const dur = a.duration;
           if (saved > 0.2 && Number.isFinite(dur) && dur > 0 && saved < dur - 0.12) {
@@ -571,14 +708,14 @@ export default function TutorPage() {
           };
         }
         a.ontimeupdate = () => {
-          narrationProgressRef.current[key] = a.currentTime;
+          narrationProgressRef.current[audioKey] = a.currentTime;
         };
         a.onended = () => {
           clearAudioHandlers();
           audioRoleRef.current = null;
           setPlayingSlide(null);
           setNarrationSubtitleLine("");
-          narrationProgressRef.current[key] = 0;
+          narrationProgressRef.current[audioKey] = 0;
           if (!autoAdvanceRef.current) return;
           const sess = activeSessionRef.current;
           if (!sess) return;
@@ -1092,11 +1229,19 @@ export default function TutorPage() {
                             ))}
                           </ul>
                           <div className="space-y-2">
-                            <p className="text-xs font-medium text-muted-foreground">What the tutor is saying</p>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-xs font-medium text-muted-foreground">What the tutor is saying</p>
+                              {eli5ForSlideIndex === slideIndex && eli5Script ? (
+                                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-100">
+                                  Simple words mode
+                                </span>
+                              ) : null}
+                            </div>
                             <div
                               className={cn(
                                 "flex min-h-[3rem] items-center justify-center rounded-lg border border-dashed border-border/80 bg-muted/20 px-2 py-2.5 text-center",
                                 playingSlide === slideIndex && narrationSubtitleLine && "border-primary/40 bg-primary/5",
+                                eli5ForSlideIndex === slideIndex && eli5Script && "border-amber-500/30 bg-amber-500/5",
                               )}
                               aria-live="polite"
                             >
@@ -1105,7 +1250,9 @@ export default function TutorPage() {
                                   ? narrationSubtitleLine
                                   : playingSlide === slideIndex
                                     ? "…"
-                                    : "Tap Play — words follow the voice in real time."}
+                                    : eli5ForSlideIndex === slideIndex && eli5Script
+                                      ? "Tap Play — simpler explanation is ready (resets when you change slide)."
+                                      : "Tap Play — words follow the voice in real time."}
                               </p>
                             </div>
                           </div>
@@ -1163,7 +1310,7 @@ export default function TutorPage() {
                           type="button"
                           size="sm"
                           className="bg-primary text-primary-foreground"
-                          disabled={narrationLoading || !slide}
+                          disabled={narrationLoading || !slide || eli5Busy}
                           onClick={() => void playNarration(slideIndex)}
                         >
                           {narrationLoading && playingSlide === slideIndex ? (
@@ -1172,6 +1319,27 @@ export default function TutorPage() {
                             <Play className="mr-2 size-4" />
                           )}
                           Play narration
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={
+                            !slide ||
+                            eli5Busy ||
+                            narrationLoading ||
+                            questionSubmitting ||
+                            asking
+                          }
+                          onClick={() => void startExplainLikeImFive()}
+                          title="Stops current audio, then a short reply plays while a simpler script is generated"
+                        >
+                          {eli5Busy ? (
+                            <Loader2 className="mr-2 size-4 animate-spin" />
+                          ) : (
+                            <Baby className="mr-2 size-4" />
+                          )}
+                          Explain like I&apos;m 5
                         </Button>
                         {playingSlide !== null || playingAnswer ? (
                           <Button
