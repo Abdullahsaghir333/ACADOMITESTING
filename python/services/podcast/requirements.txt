@@ -1,0 +1,7 @@
+# Podcast microservice — use Python 3.12.x and a dedicated venv (see README).
+flask==3.1.0
+flask-cors==5.0.0
+python-dotenv==1.0.1
+google-generativeai==0.8.4
+gTTS==2.5.4
+pydub==0.25.1

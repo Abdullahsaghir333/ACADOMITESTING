@@ -1,0 +1,54 @@
+"""
+HTTP API for the Acadomi podcast generator.
+Called by the Express backend only (keep behind firewall in production).
+"""
+from __future__ import annotations
+
+import os
+import traceback
+
+from dotenv import load_dotenv
+from flask import Flask, jsonify, request
+
+from podcast_logic import build_podcast_payload
+
+# Load .env from this service directory (works no matter the shell cwd)
+_here = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_here, ".env"))
+load_dotenv()
+
+
+app = Flask(__name__)
+
+
+@app.get("/health")
+def health():
+    return jsonify({"ok": True, "service": "acadomi-podcast"})
+
+
+@app.post("/generate-podcast")
+def generate_podcast():
+    try:
+        data = request.get_json(force=True, silent=False)
+    except Exception:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    if not data or "text" not in data:
+        return jsonify({"error": "Field 'text' is required"}), 400
+
+    text = data.get("text")
+    if not isinstance(text, str) or not text.strip():
+        return jsonify({"error": "text must be a non-empty string"}), 400
+
+    try:
+        payload = build_podcast_payload(text)
+        return jsonify(payload)
+    except Exception as e:
+        print("[podcast] error:", e)
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("FLASK_PORT", "5001"))
+    app.run(host="127.0.0.1", port=port, debug=False)
