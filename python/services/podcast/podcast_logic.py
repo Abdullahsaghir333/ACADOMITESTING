@@ -24,10 +24,49 @@ _PYDUB_FFMPEG_READY = False
 
 def _ffmpeg_hint() -> str:
     return (
-        "Install FFmpeg (both ffmpeg and ffprobe), add the folder that contains ffmpeg.exe to your user PATH, "
-        "and restart the terminal. Or set ACADOMI_FFMPEG to the full path of ffmpeg.exe "
-        "(ffprobe.exe is usually in the same folder). On Windows: winget install ffmpeg."
+        "Install FFmpeg (both ffmpeg and ffprobe), add their folder to PATH and restart the terminal, "
+        "or set ACADOMI_FFMPEG to either the full path of ffmpeg.exe OR the folder that contains "
+        "ffmpeg.exe and ffprobe.exe (WinGet installs are often …\\bin). On Windows: winget install ffmpeg."
     )
+
+
+def _exe_in_dir(directory: str, stem: str) -> str | None:
+    d = os.path.abspath(directory.strip().strip('"'))
+    name = f"{stem}.exe" if os.name == "nt" else stem
+    p = os.path.join(d, name)
+    return p if os.path.isfile(p) else None
+
+
+def _parse_acadomi_ffmpeg_env(value: str) -> tuple[str | None, str | None]:
+    """
+    ACADOMI_FFMPEG may be:
+    - path to ffmpeg.exe (ffprobe resolved beside it), or
+    - path to a directory containing ffmpeg.exe and ffprobe.exe (common for WinGet).
+    """
+    v = value.strip().strip('"')
+    if not v:
+        return None, None
+    if os.path.isdir(v):
+        ff = _exe_in_dir(v, "ffmpeg")
+        fp = _exe_in_dir(v, "ffprobe")
+        return ff, fp
+    if os.path.isfile(v):
+        base = os.path.basename(v).lower()
+        if "ffprobe" in base and "ffmpeg" not in base:
+            return _same_dir_exe(v, "ffmpeg"), v
+        return v, _same_dir_exe(v, "ffprobe")
+    return None, None
+
+
+def _parse_acadomi_ffprobe_env(value: str) -> str | None:
+    v = value.strip().strip('"')
+    if not v:
+        return None
+    if os.path.isdir(v):
+        return _exe_in_dir(v, "ffprobe")
+    if os.path.isfile(v):
+        return v
+    return None
 
 
 def _same_dir_exe(ffmpeg_path: str, name: str) -> str | None:
@@ -79,11 +118,23 @@ def ensure_pydub_ffmpeg() -> None:
         or ""
     ).strip().strip('"')
 
-    ffmpeg = env_ff or which("ffmpeg") or shutil.which("ffmpeg")
-    ffprobe = env_fp or which("ffprobe") or shutil.which("ffprobe")
+    ff_path: str | None = None
+    fp_path: str | None = None
+    if env_ff:
+        ff_path, fp_path = _parse_acadomi_ffmpeg_env(env_ff)
+    if env_fp:
+        fp_only = _parse_acadomi_ffprobe_env(env_fp)
+        if fp_only:
+            fp_path = fp_only
+            if not ff_path:
+                ff_path = _same_dir_exe(fp_only, "ffmpeg")
 
-    ff_path = ffmpeg if ffmpeg and os.path.isfile(ffmpeg) else None
-    fp_path = ffprobe if ffprobe and os.path.isfile(ffprobe) else None
+    if not ff_path:
+        w = which("ffmpeg") or shutil.which("ffmpeg")
+        ff_path = w if w and os.path.isfile(w) else None
+    if not fp_path:
+        w = which("ffprobe") or shutil.which("ffprobe")
+        fp_path = w if w and os.path.isfile(w) else None
     if ff_path and not fp_path:
         fp_path = _same_dir_exe(ff_path, "ffprobe")
     if fp_path and not ff_path:
