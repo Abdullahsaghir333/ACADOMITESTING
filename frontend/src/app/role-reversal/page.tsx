@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { MarketingHeader } from "@/components/marketing-header";
+import { VoiceRecordingVisualizer } from "@/components/voice-recording-visualizer";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -39,6 +40,23 @@ import {
   type RoleReversalSessionDTO,
   type UploadDTO,
 } from "@/lib/api";
+
+function formatRecordingClock(ms: number): string {
+  const totalS = Math.floor(ms / 1000);
+  const centi = Math.floor((ms % 1000) / 100);
+  const m = Math.floor(totalS / 60);
+  const s = totalS % 60;
+  if (m > 0) return `${m}:${String(s).padStart(2, "0")}.${centi}`;
+  if (totalS > 0) return `${s}.${centi}s`;
+  return `0.${centi}s`;
+}
+
+function formatClipLengthMmSs(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
 
 function ScorePill({ label, value }: { label: string; value: number }) {
   return (
@@ -263,9 +281,13 @@ export default function RoleReversalPage() {
   const [error, setError] = React.useState<string | null>(null);
 
   const [recording, setRecording] = React.useState(false);
+  const [mediaStream, setMediaStream] = React.useState<MediaStream | null>(null);
+  const [elapsedMs, setElapsedMs] = React.useState(0);
+  const [clipDurationMs, setClipDurationMs] = React.useState<number | null>(null);
   const [audioBlob, setAudioBlob] = React.useState<Blob | null>(null);
   const recordingRef = React.useRef<MediaRecorder | null>(null);
   const chunksRef = React.useRef<Blob[]>([]);
+  const recordStartRef = React.useRef(0);
 
   const [latest, setLatest] = React.useState<RoleReversalSessionDTO | null>(null);
   const [improveSessionId, setImproveSessionId] = React.useState<string | null>(null);
@@ -301,24 +323,40 @@ export default function RoleReversalPage() {
     }
   }, [completed, uploadId]);
 
+  React.useEffect(() => {
+    if (!recording) return;
+    setElapsedMs(0);
+    const id = window.setInterval(() => {
+      setElapsedMs(Date.now() - recordStartRef.current);
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [recording]);
+
   async function startRecording() {
     setError(null);
+    setClipDurationMs(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMediaStream(stream);
       const rec = new MediaRecorder(stream);
       chunksRef.current = [];
       rec.ondataavailable = (ev) => {
         if (ev.data.size) chunksRef.current.push(ev.data);
       };
       rec.onstop = () => {
+        const dur = Date.now() - recordStartRef.current;
+        setClipDurationMs(dur);
         stream.getTracks().forEach((tr) => tr.stop());
+        setMediaStream(null);
         const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
         setAudioBlob(blob);
       };
       recordingRef.current = rec;
+      recordStartRef.current = Date.now();
       rec.start();
       setRecording(true);
     } catch {
+      setMediaStream(null);
       setError("Microphone access was denied or unavailable.");
     }
   }
@@ -466,33 +504,70 @@ export default function RoleReversalPage() {
                     </select>
                   </div>
 
-                  <div className="rounded-lg border border-dashed border-border bg-muted/30 p-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {!recording ? (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={() => void startRecording()}
-                          disabled={!!audioBlob}
-                        >
-                          <Mic className="mr-2 size-4" />
-                          {audioBlob ? "Recording saved" : "Start recording"}
-                        </Button>
-                      ) : (
-                        <Button type="button" variant="destructive" onClick={stopRecording}>
-                          <Square className="mr-2 size-4" />
-                          Stop
-                        </Button>
-                      )}
-                      {audioBlob && !recording ? (
-                        <Button type="button" variant="ghost" size="sm" onClick={() => setAudioBlob(null)}>
-                          <RotateCcw className="mr-1 size-4" />
-                          Discard clip
-                        </Button>
+                  <div className="space-y-3 rounded-lg border border-dashed border-border bg-muted/30 p-4">
+                    <VoiceRecordingVisualizer stream={mediaStream} active={recording} />
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!recording ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => void startRecording()}
+                            disabled={!!audioBlob}
+                          >
+                            <Mic className="mr-2 size-4" />
+                            {audioBlob ? "Recording saved" : "Start recording"}
+                          </Button>
+                        ) : (
+                          <Button type="button" variant="destructive" onClick={stopRecording}>
+                            <Square className="mr-2 size-4" />
+                            Stop
+                          </Button>
+                        )}
+                        {audioBlob && !recording ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setAudioBlob(null);
+                              setClipDurationMs(null);
+                            }}
+                          >
+                            <RotateCcw className="mr-1 size-4" />
+                            Discard clip
+                          </Button>
+                        ) : null}
+                      </div>
+                      {recording ? (
+                        <div className="flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1">
+                          <span className="relative flex h-2.5 w-2.5 shrink-0">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-50" />
+                            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+                          </span>
+                          <span className="text-xs font-medium text-red-700 dark:text-red-400">
+                            Recording
+                          </span>
+                          <span
+                            className="font-mono text-sm font-semibold tabular-nums text-foreground"
+                            aria-live="polite"
+                            aria-atomic="true"
+                          >
+                            {formatRecordingClock(elapsedMs)}
+                          </span>
+                        </div>
+                      ) : audioBlob && clipDurationMs != null ? (
+                        <div className="text-xs text-muted-foreground">
+                          Clip length{" "}
+                          <span className="font-mono font-medium text-foreground">
+                            {formatClipLengthMmSs(clipDurationMs)}
+                          </span>
+                        </div>
                       ) : null}
                     </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Speak clearly for ~30–90 seconds. One clip per submission.
+                    <p className="text-xs text-muted-foreground">
+                      Bars react to your voice. Speak clearly for ~30–90 seconds — one clip per
+                      submission.
                     </p>
                   </div>
 
