@@ -392,3 +392,113 @@ ${params.materialExcerpt.trim().slice(0, 14_000)}
   const result = await model.generateContent(body);
   return result.response.text().trim().slice(0, 6000);
 }
+
+function stripOuterMarkdownFence(text: string): string {
+  const t = text.trim();
+  const m = t.match(/^```(?:markdown|md)?\s*\n?([\s\S]*?)\n?```\s*$/i);
+  if (m) return m[1].trim();
+  return t;
+}
+
+/**
+ * Smart cheat sheet: dense, scannable markdown for one topic from learner material.
+ */
+export async function generateSmartCheatSheetMarkdown(
+  material: string,
+  topic: string,
+): Promise<string> {
+  const model = getModel();
+  const excerpt = material.trim().slice(0, 100_000);
+  const focus = topic.trim().slice(0, 500);
+
+  const body = `You are Acadomi. Build a **smart cheat sheet** in Markdown for ONE topic the learner chose.
+
+Learner topic (center everything on this):
+${focus}
+
+Source material (notes / extracted text from their upload):
+---
+${excerpt}
+---
+
+Strict output rules (follow all):
+
+1. **Prioritize functional syntax and logic** — Focus exclusively on actionable "how-to" steps, core formulas, or operational workflows. Strictly omit long-form definitions or theoretical fluff.
+
+2. **Enforce visual hierarchy and scannability** — Organize all information into distinct, categorized blocks with **bold** section headers (use \`##\` or \`**Header**\` lines). Use Markdown **tables** for quick-reference comparisons or key-value pairs where helpful.
+
+3. **Use realistic contextual examples** — Provide concrete, real-world instances of the concepts in action. Do not use generic brackets or abstract placeholders like [example] or "foo/bar".
+
+4. **Limit scope for high-density retrieval** — Keep the sheet concise enough to fit a single printed page. Put high-frequency essentials at the top; troubleshooting or rare edge cases at the bottom.
+
+Output **only** valid Markdown for the cheat sheet. No preamble, no closing commentary, no code fences wrapping the whole document.`;
+
+  const result = await model.generateContent(body);
+  const raw = result.response.text().trim();
+  return stripOuterMarkdownFence(raw).trim().slice(0, 120_000);
+}
+
+/**
+ * Short spoken recap expanding a bookmarked tutor subtitle line (plain text for TTS).
+ */
+export async function generateBookmarkRecapScript(params: {
+  bookmarkLine: string;
+  materialExcerpt: string;
+  slideTitle?: string;
+}): Promise<string> {
+  const model = getModel();
+  const slide = params.slideTitle?.trim() ? `Slide context: ${params.slideTitle.trim().slice(0, 200)}\n` : "";
+  const body = `You are Acadomi. The learner bookmarked this passage from their AI tutor:
+"${params.bookmarkLine.trim().slice(0, 14_000)}"
+
+${slide}Course material (for accuracy — stay consistent with it):
+---
+${params.materialExcerpt.trim().slice(0, 48_000)}
+---
+
+Write a **short audio recap** they can listen to (about 55–130 words). Rules:
+- Plain sentences only — no markdown, bullets, or stage directions.
+- Expand and clarify the bookmarked idea using the material; do not invent facts.
+- Warm, clear teaching tone; one cohesive mini-explanation.
+
+Output ONLY the spoken script, nothing else.`;
+
+  const result = await model.generateContent(body);
+  return result.response.text().trim().slice(0, 4000);
+}
+
+export type BookmarkChatTurn = { role: "user" | "assistant"; content: string };
+
+/**
+ * Answer a follow-up question about a bookmarked concept (text for UI).
+ */
+export async function answerBookmarkQuestion(params: {
+  bookmarkLine: string;
+  materialExcerpt: string;
+  message: string;
+  history: BookmarkChatTurn[];
+}): Promise<string> {
+  const model = getModel();
+  const hist = params.history
+    .slice(-8)
+    .map((t) => `${t.role === "user" ? "Learner" : "Tutor"}: ${t.content}`)
+    .join("\n");
+  const body = `You are Acadomi, a patient tutor. The learner saved this bookmark from their lesson:
+"${params.bookmarkLine.trim().slice(0, 14_000)}"
+
+Material from their upload (use for accuracy):
+---
+${params.materialExcerpt.trim().slice(0, 56_000)}
+---
+
+Prior conversation (if any):
+${hist || "(none)"}
+
+Learner's new question:
+${params.message.trim().slice(0, 4000)}
+
+Reply with a clear, helpful answer (markdown allowed for formulas/code if needed). Stay grounded in the material; if the question goes beyond it, say what you can infer and what is unknown. Keep it focused — roughly 80–350 words unless they ask for depth.`;
+
+  const result = await model.generateContent(body);
+  return result.response.text().trim().slice(0, 12_000);
+}

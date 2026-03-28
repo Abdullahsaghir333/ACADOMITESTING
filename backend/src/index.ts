@@ -7,8 +7,10 @@ import express from "express";
 import mongoose from "mongoose";
 
 import authRoutes from "./routes/auth.js";
+import bookmarkRoutes from "./routes/bookmarks.js";
 import podcastRoutes from "./routes/podcasts.js";
 import roleReversalRoutes from "./routes/roleReversal.js";
+import cheatSheetRoutes from "./routes/cheatSheets.js";
 import tutorRoutes from "./routes/tutor.js";
 import uploadRoutes from "./routes/uploads.js";
 
@@ -51,10 +53,12 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/bookmarks", bookmarkRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/podcasts", podcastRoutes);
 app.use("/api/role-reversal", roleReversalRoutes);
 app.use("/api/tutor", tutorRoutes);
+app.use("/api/cheat-sheets", cheatSheetRoutes);
 
 async function start() {
   if (MONGODB_URI) {

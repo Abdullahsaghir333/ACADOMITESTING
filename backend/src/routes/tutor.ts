@@ -11,6 +11,7 @@ import {
   generateTutorSlidesAndScripts,
   transcribeAudio,
 } from "../services/gemini.js";
+import { tutorPyBase, tutorPyTts } from "../services/tutorPythonClient.js";
 
 const router = Router();
 const MAX_TUTOR_SESSIONS_PER_USER = 25;
@@ -20,46 +21,8 @@ const upload = multer({
   limits: { fileSize: 12 * 1024 * 1024 },
 });
 
-function pyBase(): string {
-  return (process.env.TUTOR_SERVICE_URL?.trim() || "http://127.0.0.1:5002").replace(/\/$/, "");
-}
-
-async function pyTts(text: string): Promise<{ mimeType: string; audioBase64: string }> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 120_000);
-  try {
-    const res = await fetch(`${pyBase()}/tts`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-      signal: ctrl.signal,
-    });
-    const data = (await res.json()) as {
-      mimeType?: string;
-      audioBase64?: string;
-      error?: string;
-      detail?: unknown;
-    };
-    if (!res.ok) {
-      const detail =
-        typeof data.detail === "string"
-          ? data.detail
-          : Array.isArray(data.detail)
-            ? JSON.stringify(data.detail)
-            : data.error;
-      throw new Error(detail || "Tutor TTS service error");
-    }
-    if (!data.audioBase64) {
-      throw new Error("Tutor TTS response missing audio");
-    }
-    return { mimeType: data.mimeType || "audio/mpeg", audioBase64: data.audioBase64 };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function pyFocusReset(sessionKey: string): Promise<void> {
-  const res = await fetch(`${pyBase()}/focus/reset`, {
+  const res = await fetch(`${tutorPyBase()}/focus/reset`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_key: sessionKey }),
@@ -73,7 +36,7 @@ async function pyFocusReset(sessionKey: string): Promise<void> {
 }
 
 async function pyFocusAnalyze(sessionKey: string, imageBuffer: Buffer): Promise<Record<string, unknown>> {
-  const res = await fetch(`${pyBase()}/focus/analyze`, {
+  const res = await fetch(`${tutorPyBase()}/focus/analyze`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -219,7 +182,7 @@ router.post("/tts", authMiddleware, async (req: AuthedRequest, res: Response) =>
     return res.status(400).json({ error: "text is required (max 6000 characters)." });
   }
   try {
-    const { mimeType, audioBase64 } = await pyTts(text);
+    const { mimeType, audioBase64 } = await tutorPyTts(text);
     const buf = Buffer.from(audioBase64, "base64");
     res.setHeader("Content-Type", mimeType);
     res.send(buf);
@@ -348,7 +311,7 @@ router.post(
       if (!slide?.script) {
         return res.status(404).json({ error: "Slide not found." });
       }
-      const { mimeType, audioBase64 } = await pyTts(slide.script);
+      const { mimeType, audioBase64 } = await tutorPyTts(slide.script);
       const buf = Buffer.from(audioBase64, "base64");
       res.setHeader("Content-Type", mimeType);
       res.send(buf);
