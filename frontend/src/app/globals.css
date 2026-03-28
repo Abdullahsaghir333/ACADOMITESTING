@@ -163,3 +163,100 @@ body {
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
   cursor: pointer;
 }
+
+/* Smart cheat sheet — rendered Markdown (screen + PNG export clone) */
+.cheat-sheet-md {
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+.cheat-sheet-md :first-child {
+  margin-top: 0;
+}
+.cheat-sheet-md h1,
+.cheat-sheet-md h2,
+.cheat-sheet-md h3 {
+  font-weight: 700;
+  margin-top: 1rem;
+  margin-bottom: 0.4rem;
+  line-height: 1.25;
+}
+.cheat-sheet-md h1 {
+  font-size: 1.125rem;
+}
+.cheat-sheet-md h2 {
+  font-size: 1rem;
+}
+.cheat-sheet-md h3 {
+  font-size: 0.9375rem;
+}
+.cheat-sheet-md p {
+  margin: 0.35rem 0;
+}
+.cheat-sheet-md ul,
+.cheat-sheet-md ol {
+  margin: 0.35rem 0;
+  padding-left: 1.25rem;
+}
+.cheat-sheet-md li {
+  margin: 0.2rem 0;
+}
+.cheat-sheet-md table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.8125rem;
+}
+.cheat-sheet-md th,
+.cheat-sheet-md td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+.cheat-sheet-md th {
+  font-weight: 600;
+  background: var(--muted);
+}
+.cheat-sheet-md code {
+  font-size: 0.8125em;
+  padding: 0.1em 0.3em;
+  border-radius: 0.25rem;
+  background: var(--muted);
+}
+.cheat-sheet-md pre {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  overflow-x: auto;
+  font-size: 0.8125rem;
+}
+.cheat-sheet-md pre code {
+  padding: 0;
+  background: transparent;
+}
+.cheat-sheet-md blockquote {
+  margin: 0.5rem 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--primary);
+  color: var(--muted-foreground);
+}
+
+/* Light canvas for html2canvas */
+.cheat-sheet-md-export th,
+.cheat-sheet-md-export td {
+  border-color: #d4d4d8;
+}
+.cheat-sheet-md-export th {
+  background: #f4f4f5;
+}
+.cheat-sheet-md-export code {
+  background: #f4f4f5;
+}
+.cheat-sheet-md-export pre {
+  background: #f4f4f5;
+}
+.cheat-sheet-md-export blockquote {
+  border-left-color: #16a34a;
+  color: #52525b;
+}
