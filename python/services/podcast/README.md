@@ -4,7 +4,9 @@ Generates a two-speaker script with **Google Gemini** and audio with **gTTS** + 
 
 ## Prerequisites
 
-- **Python 3.12.x** (see `.python-version`; use [pyenv](https://github.com/pyenv/pyenv) / [pyenv-win](https://github.com/pyenv-win/pyenv-win))
+- **Python 3.12.x** (see `.python-version`; use [pyenv](https://github.com/pyenv/pyenv) / [pyenv-win](https://github.com/pyenv-win/pyenv-win)).  
+  On Windows, plain `python` may be **3.13+**; create the venv with `py -3.12 -m venv .venv` so it matches this project.  
+  If you stay on **3.13 or newer**, `requirements.txt` pulls in **`audioop-lts`** automatically (stdlib `audioop` was removed; without it, pydub fails with `No module named 'audioop'` / `pyaudioop`).
 - **ffmpeg** on your `PATH` (required by pydub).  
   - Windows: `choco install ffmpeg` or download from [ffmpeg.org](https://ffmpeg.org/) and add `bin` to PATH.
 - **GEMINI_API_KEY** in `.env` (same key as the Node backend is fine for local dev)
@@ -13,7 +15,9 @@ Generates a two-speaker script with **Google Gemini** and audio with **gTTS** + 
 
 ```bash
 cd python/services/podcast
-python -m venv .venv
+# Prefer 3.12 (Windows launcher):
+py -3.12 -m venv .venv
+# or: python3.12 -m venv .venv   # macOS/Linux if installed
 # Windows:
 .venv\Scripts\activate
 # macOS/Linux:

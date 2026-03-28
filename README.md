@@ -65,7 +65,7 @@ Health check: [http://localhost:4000/health](http://localhost:4000/health) — s
 
 ### Podcast service (optional)
 
-Podcast generation calls a small Python app (separate process). Set `GEMINI_API_KEY` in `python/services/podcast/.env` (see `python/services/podcast/.env.example`). Install **ffmpeg** so `pydub` can merge audio.
+Podcast generation calls a small Python app (separate process). Set `GEMINI_API_KEY` in `python/services/podcast/.env` (see `python/services/podcast/.env.example`). Install **ffmpeg** so `pydub` can merge audio. If your interpreter is **Python 3.13+**, `requirements.txt` installs **`audioop-lts`** (stdlib `audioop` was removed; without it pydub errors on `audioop` / `pyaudioop`).
 
 ```bash
 cd python/services/podcast
