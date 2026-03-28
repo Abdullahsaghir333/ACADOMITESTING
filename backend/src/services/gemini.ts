@@ -361,3 +361,34 @@ Student question: ${q}`;
   const result = await model.generateContent(body);
   return result.response.text().trim();
 }
+
+/**
+ * One-slide "explain like I'm five" spoken script (Gemini only). Same facts, simpler words.
+ */
+export async function generateTutorSlideEli5Script(params: {
+  slideTitle: string;
+  slidePoints: string[];
+  slideScript: string;
+  materialExcerpt: string;
+}): Promise<string> {
+  const model = getModel();
+  const body = `The learner pressed "Explain like I'm five" for ONE slide. Write a single script the tutor will read aloud.
+Rules:
+- Use very simple words and short sentences (like talking to a bright 5-year-old). Stay warm, not babyish to an adult.
+- Keep the same ideas and facts as the slide; do not invent or change meaning.
+- About 55–130 words. Plain text only: no markdown, no bullet symbols in speech (smooth spoken sentences).
+- Output ONLY the script, nothing else.
+
+Slide title: ${params.slideTitle}
+Bullets: ${params.slidePoints.join(" | ")}
+Current tutor script (rewrite simpler):
+${params.slideScript.trim().slice(0, 4500)}
+
+Reference material (for accuracy only):
+---
+${params.materialExcerpt.trim().slice(0, 14_000)}
+---`;
+
+  const result = await model.generateContent(body);
+  return result.response.text().trim().slice(0, 6000);
+}

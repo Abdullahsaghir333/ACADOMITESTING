@@ -7,6 +7,7 @@ import { Upload, type UploadDoc } from "../models/Upload.js";
 import { authMiddleware, type AuthedRequest } from "../middleware/auth.js";
 import {
   answerTutorQuestion,
+  generateTutorSlideEli5Script,
   generateTutorSlidesAndScripts,
   transcribeAudio,
 } from "../services/gemini.js";
@@ -274,6 +275,57 @@ router.post(
       console.error(e);
       const msg = e instanceof Error ? e.message : "Focus analysis failed.";
       return res.status(503).json({ error: msg });
+    }
+  },
+);
+
+router.post(
+  "/sessions/:id/slides/:slideIndex/eli5",
+  authMiddleware,
+  async (req: AuthedRequest, res: Response) => {
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+    }
+
+    try {
+      const id = req.params.id;
+      const idx = Number.parseInt(req.params.slideIndex, 10);
+      if (!mongoose.Types.ObjectId.isValid(id) || !Number.isFinite(idx) || idx < 0) {
+        return res.status(400).json({ error: "Invalid session or slide index." });
+      }
+      const s = await TutorSession.findOne({ _id: id, userId: req.userId }).lean<TutorSessionLean | null>();
+      if (!s) {
+        return res.status(404).json({ error: "Session not found." });
+      }
+      const slide = s.slides[idx];
+      if (!slide) {
+        return res.status(404).json({ error: "Slide not found." });
+      }
+
+      const uploadDoc = await Upload.findOne({ _id: s.sourceUploadId, userId: req.userId }).lean<
+        UploadDoc | null
+      >();
+      const material =
+        uploadDoc != null
+          ? [uploadDoc.processedContent, uploadDoc.extractedText].filter(Boolean).join("\n\n").trim()
+          : "";
+
+      const script = await generateTutorSlideEli5Script({
+        slideTitle: slide.title,
+        slidePoints: slide.points,
+        slideScript: slide.script,
+        materialExcerpt: material,
+      });
+
+      if (!script.trim()) {
+        return res.status(500).json({ error: "Model returned an empty explanation." });
+      }
+
+      return res.json({ script: script.trim() });
+    } catch (e) {
+      console.error(e);
+      const msg = e instanceof Error ? e.message : "Could not generate simple explanation.";
+      return res.status(500).json({ error: msg });
     }
   },
 );
