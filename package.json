@@ -11,6 +11,7 @@
     "dev": "npm run dev --workspace=frontend",
     "dev:frontend": "npm run dev --workspace=frontend",
     "dev:backend": "npm run dev --workspace=backend",
+    "dev:podcast": "python/services/podcast/.venv/Scripts/python.exe python/services/podcast/app.py",
     "build": "npm run build --workspace=frontend",
     "build:frontend": "npm run build --workspace=frontend",
     "build:backend": "npm run build --workspace=backend",
@@ -18,5 +19,8 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "mongodb": "^7.1.1"
   }
 }

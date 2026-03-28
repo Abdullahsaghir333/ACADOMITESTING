@@ -7,14 +7,37 @@ AI-powered personalized learning platform (Final Year Project). Monorepo layout 
 | Path | Role |
 |------|------|
 | `frontend/` | Next.js (App Router, Tailwind v4) — UI |
-| `backend/` | Express + MongoDB API |
-| `python/` | Python services (OCR, Whisper, CV, ML). Per-service `.python-version` + venv |
+| `backend/` | Express + MongoDB + **Google Gemini** (uploads & auth) |
+| `python/services/podcast/` | Flask microservice: Gemini dialogue script + gTTS audio (port 5001) |
 
 ## Prerequisites
 
 - **Node.js** 20+ (see `.nvmrc`)
-- **Python** 3.10+ (optional until you add ML services)
-- **MongoDB Atlas** or local Mongo via Docker Compose
+- **MongoDB Atlas** (or local Mongo via Docker Compose)
+- **Google AI Studio** API key for Gemini (`GEMINI_API_KEY` in `backend/.env`)
+
+## Environment (backend)
+
+Copy `backend/.env.example` to `backend/.env` and set:
+
+| Variable | Purpose |
+|----------|---------|
+| `MONGODB_URI` | MongoDB connection string |
+| `JWT_SECRET` | Long random string for signing login tokens |
+| `GEMINI_API_KEY` | Gemini API key (server-only) |
+| `FRONTEND_URL` | Next.js origin for CORS (e.g. `http://localhost:3000`) |
+| `GEMINI_MODEL` | Optional; defaults to `gemini-2.5-flash` |
+| `PODCAST_SERVICE_URL` | Base URL of the Python podcast API (default `http://127.0.0.1:5001`) |
+
+Never commit `.env`.
+
+## Environment (frontend)
+
+Copy `frontend/.env.example` to `frontend/.env.local` if your API is not on `http://localhost:4000`:
+
+```
+NEXT_PUBLIC_API_URL=http://localhost:4000
+```
 
 ## Install
 
@@ -26,27 +49,40 @@ npm install
 
 ## Run (development)
 
-**Frontend** (Next.js — http://localhost:3000):
-
-```bash
-npm run dev
-```
-
-or:
-
-```bash
-npm run dev:frontend
-```
-
-**Backend** (Express — http://localhost:4000):
+**Backend** (http://localhost:4000):
 
 ```bash
 npm run dev:backend
 ```
 
-Create `backend/.env` from `backend/.env.example` and set `MONGODB_URI`. **Never commit `.env`** — it is gitignored.
+**Frontend** (http://localhost:3000):
 
-**Health check:** [http://localhost:4000/health](http://localhost:4000/health) — JSON includes `database: connected` when MongoDB is reachable.
+```bash
+npm run dev
+```
+
+Health check: [http://localhost:4000/health](http://localhost:4000/health) — should show `database: connected` and `gemini: configured` when env is set.
+
+### Podcast service (optional)
+
+Podcast generation calls a small Python app (separate process). Set `GEMINI_API_KEY` in `python/services/podcast/.env` (see `python/services/podcast/.env.example`). Install **ffmpeg** so `pydub` can merge audio.
+
+```bash
+cd python/services/podcast
+py -3.12 -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+python app.py
+```
+
+From the repo root (after the venv exists): `npm run dev:podcast`. The Node API must reach it (`PODCAST_SERVICE_URL` in `backend/.env`).
+
+## Current features (this milestone)
+
+- **Auth:** Register, login (JWT in `localStorage`), profile & password on **Settings**.
+- **Uploads (max 7 per user):** PDF (text via `pdf-parse`), images & audio via **Gemini**; optional prompt; stored extracted text + Gemini “processed notes” in MongoDB.
+- **Podcast mode:** Pick a **completed** upload; backend calls the Python service (Gemini script + gTTS), stores **MP3 in MongoDB GridFS**, lists **Your podcasts** with replay and delete.
+- **Navigation:** Dashboard, Uploads, Podcast mode, Settings, and platform roadmap links.
 
 ## Production build
 
@@ -55,34 +91,23 @@ npm run build:frontend
 npm run build:backend
 ```
 
-## Python services
-
-See `python/README.md`. Each service folder keeps its own virtual environment and dependencies.
-
 ## Local MongoDB (optional)
 
 ```bash
 docker compose up -d
 ```
 
-## GitHub
+## Troubleshooting
 
-First push (if the repo is new):
-
-```bash
-git add .
-git commit -m "Initial Acadomi UI and API scaffold"
-git branch -M main
-git remote add origin https://github.com/salmansaleem08/Acadomi.git
-git push -u origin main
-```
-
-If `origin` already exists, use `git remote set-url origin https://github.com/salmansaleem08/Acadomi.git` then `git push -u origin main`.
+- **Backend exits on startup with `ENOENT` … `05-versions-space.pdf`:** the `pdf-parse` package root `index.js` runs a debug block under ESM. This project imports `pdf-parse/lib/pdf-parse.js` instead (see `backend/src/services/pdfText.ts`).
+- **Browser console `chrome-extension://invalid`:** comes from a browser extension, not Acadomi — safe to ignore.
+- **`ERR_CONNECTION_REFUSED` to port 4000:** the API is not running; start the backend with `npm run dev:backend`.
+- **`JWT_SECRET not set` or auth returns 500:** add `JWT_SECRET=...` to `backend/.env`. The API reads it **on each request** (not at import time) so it stays in sync after `dotenv` loads. Check `/health` — `jwt` should be `"configured"`.
 
 ## Security
 
-- Rotate any database password that was shared in plain text or chat, and update `MONGODB_URI` in `backend/.env` only.
-- Do not commit secrets; use environment variables and `.env.example` templates.
+- Rotate credentials if they were ever exposed.
+- Do not commit secrets; use `.env` locally and platform env vars in deployment.
 
 ## License
 
