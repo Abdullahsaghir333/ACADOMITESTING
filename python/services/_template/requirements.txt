@@ -1,0 +1,3 @@
+# Pin versions per service. Example:
+# openai-whisper==20231117
+# mediapipe==0.10.14

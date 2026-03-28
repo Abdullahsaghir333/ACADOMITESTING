@@ -1,0 +1,84 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env*.example
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+.uv/
+uv.lock
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# ML / large artifacts (keep local or use Git LFS)
+*.pt
+*.pth
+*.onnx
+*.h5
+*.ckpt
+*.safetensors
+models/
+checkpoints/
+data/raw/
+
+# Logs and debug
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.swp
+*.swo
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+*.local
+.turbo
