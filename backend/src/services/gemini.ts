@@ -257,3 +257,107 @@ Be fair: reward correct ideas; note gaps vs reference. JSON only:`;
   }
   return normalizeEvaluation(parsed as Record<string, unknown>);
 }
+
+export type TutorSlideDraft = {
+  title: string;
+  points: string[];
+  script: string;
+};
+
+function normalizeTutorSlides(raw: unknown): TutorSlideDraft[] {
+  if (!Array.isArray(raw)) {
+    throw new Error("slides must be an array");
+  }
+  const out: TutorSlideDraft[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const title = str(o.title).trim();
+    const script = str(o.script).trim();
+    const pointsRaw = o.points;
+    const points = Array.isArray(pointsRaw)
+      ? pointsRaw.map((p) => str(p).trim()).filter((p) => p.length > 0)
+      : [];
+    if (!title || !script || points.length === 0) continue;
+    out.push({ title, points, script });
+  }
+  if (out.length < 3) {
+    throw new Error("Model returned too few valid slides (need at least 3).");
+  }
+  if (out.length > 16) {
+    return out.slice(0, 16);
+  }
+  return out;
+}
+
+/**
+ * Build slide deck + per-slide spoken scripts for the Meet-style AI tutor (Gemini only).
+ */
+export async function generateTutorSlidesAndScripts(
+  material: string,
+  topicFocus?: string,
+): Promise<TutorSlideDraft[]> {
+  const model = getModel();
+  const focus = topicFocus?.trim()
+    ? `Learner focus / topic to emphasize (still cover the rest at a high level):\n${topicFocus.trim()}\n\n`
+    : "";
+  const body = `You are an expert curriculum designer. Turn the study material into slides for a live AI tutor session.
+Each slide needs: a short title, 2–5 bullet points, and a "script" — exactly what the tutor should SAY aloud (conversational, clear, no markdown, roughly 40–90 words).
+
+${focus}Material:
+---
+${material.trim().slice(0, 100_000)}
+---
+
+Output ONLY valid JSON (no markdown fences, no commentary) with exactly this shape:
+{"slides":[{"title":"string","points":["string"],"script":"string"}]}
+
+Rules:
+- Produce 6–14 slides in logical teaching order (intro → concepts → recap).
+- Bullets are concise; the script expands and teaches them.
+- Stay faithful to the material; do not invent facts not supported by the text.`;
+
+  const result = await model.generateContent(body);
+  const rawText = result.response.text().trim();
+  let parsed: unknown;
+  try {
+    parsed = extractFirstJsonObject(rawText);
+  } catch {
+    throw new Error("Model did not return parseable JSON for tutor slides");
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Tutor slides JSON was not an object");
+  }
+  const slidesRaw = (parsed as Record<string, unknown>).slides;
+  return normalizeTutorSlides(slidesRaw);
+}
+
+/**
+ * Short spoken-style answer during the session (Gemini only).
+ */
+export async function answerTutorQuestion(params: {
+  question: string;
+  slideTitle: string;
+  slidePoints: string[];
+  slideScript: string;
+  materialExcerpt: string;
+}): Promise<string> {
+  const model = getModel();
+  const q = params.question.trim().slice(0, 8000);
+  const body = `You are a live tutor in a video-style session. The student asked a question during this slide.
+Answer clearly in 2–6 short sentences. No markdown headings. If the question is unclear, ask one brief clarifying question.
+
+Slide title: ${params.slideTitle}
+Slide bullets: ${params.slidePoints.join(" | ")}
+What you were saying on this slide: ${params.slideScript.trim().slice(0, 4000)}
+
+Reference material (for accuracy):
+---
+${params.materialExcerpt.trim().slice(0, 24_000)}
+---
+
+Student question: ${q}`;
+
+  const result = await model.generateContent(body);
+  return result.response.text().trim();
+}

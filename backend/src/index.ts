@@ -9,6 +9,7 @@ import mongoose from "mongoose";
 import authRoutes from "./routes/auth.js";
 import podcastRoutes from "./routes/podcasts.js";
 import roleReversalRoutes from "./routes/roleReversal.js";
+import tutorRoutes from "./routes/tutor.js";
 import uploadRoutes from "./routes/uploads.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,6 +46,7 @@ app.get("/health", (_req, res) => {
     gemini: process.env.GEMINI_API_KEY ? "configured" : "missing",
     jwt: process.env.JWT_SECRET ? "configured" : "missing",
     podcastService: process.env.PODCAST_SERVICE_URL ?? "http://127.0.0.1:5001",
+    tutorService: process.env.TUTOR_SERVICE_URL ?? "http://127.0.0.1:5002",
   });
 });
 
@@ -52,6 +54,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/podcasts", podcastRoutes);
 app.use("/api/role-reversal", roleReversalRoutes);
+app.use("/api/tutor", tutorRoutes);
 
 async function start() {
   if (MONGODB_URI) {
