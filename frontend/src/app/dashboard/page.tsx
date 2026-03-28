@@ -12,8 +12,8 @@ import {
   Mic2,
   Quote,
   ScrollText,
-  Sparkles,
   Upload,
+  Users,
 } from "lucide-react";
 
 import { MarketingHeader } from "@/components/marketing-header";
@@ -33,9 +33,11 @@ import {
   apiListCheatSheets,
   apiListPodcasts,
   apiListRoleReversalSessions,
+  apiListTutorGroupInvitesMine,
   apiListTutorSessions,
   apiListUploads,
   getToken,
+  type TutorGroupInviteCardDTO,
 } from "@/lib/api";
 
 function formatDurationMs(ms: number): string {
@@ -113,11 +115,33 @@ const emptyStats: DashboardStats = {
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
-  const [quote] = React.useState(
-    () => DASHBOARD_QUOTES[Math.floor(Math.random() * DASHBOARD_QUOTES.length)]!,
-  );
+  const [quote, setQuote] = React.useState<(typeof DASHBOARD_QUOTES)[number] | null>(null);
+
+  React.useEffect(() => {
+    setQuote(DASHBOARD_QUOTES[Math.floor(Math.random() * DASHBOARD_QUOTES.length)]!);
+  }, []);
   const [stats, setStats] = React.useState<DashboardStats | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [groupInvites, setGroupInvites] = React.useState<TutorGroupInviteCardDTO[]>([]);
+
+  React.useEffect(() => {
+    const t = getToken();
+    if (!t) {
+      setGroupInvites([]);
+      return;
+    }
+    let cancelled = false;
+    void apiListTutorGroupInvitesMine(t)
+      .then((r) => {
+        if (!cancelled) setGroupInvites(r.invites);
+      })
+      .catch(() => {
+        if (!cancelled) setGroupInvites([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   React.useEffect(() => {
     const t = getToken();
@@ -223,14 +247,13 @@ export default function DashboardPage() {
           <div className="relative max-w-3xl">
             <p
               id="dash-quote"
-              className="text-lg font-medium leading-relaxed tracking-tight text-foreground sm:text-xl md:text-2xl"
+              className="min-h-[3.5rem] text-lg font-medium leading-relaxed tracking-tight text-foreground sm:min-h-[4rem] sm:text-xl md:text-2xl"
+              aria-busy={!quote}
             >
-              “{quote.text}”
+              {quote ? `“${quote.text}”` : "\u00a0"}
             </p>
-            <p className="mt-4 text-sm font-medium text-primary">— {quote.author}</p>
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Sparkles className="size-3.5 shrink-0" aria-hidden />
-              A fresh quote each time you open the dashboard.
+            <p className="mt-4 min-h-[1.25rem] text-sm font-medium text-primary">
+              {quote ? `— ${quote.author}` : "\u00a0"}
             </p>
           </div>
         </section>
@@ -243,6 +266,40 @@ export default function DashboardPage() {
             Here’s a snapshot of your study tools — uploads, AI sessions, and saved highlights.
           </p>
         </div>
+
+        {groupInvites.length > 0 ? (
+          <Card className="mt-8 border-violet-500/25 bg-violet-500/[0.04] shadow-sm dark:bg-violet-500/10">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Users className="size-5 text-violet-600 dark:text-violet-300" aria-hidden />
+                Group study invites
+              </CardTitle>
+              <CardDescription>
+                Friends invited you to join an AI tutor session. Open the tutor to accept or decline.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <ul className="space-y-3">
+                {groupInvites.map((inv) => (
+                  <li
+                    key={inv.id}
+                    className="flex flex-col gap-2 rounded-lg border border-border bg-background/80 p-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <p className="text-sm text-foreground">
+                      <span className="font-semibold">{inv.hostName}</span> invited you to{" "}
+                      <span className="font-medium">{inv.displayTitle}</span>.
+                    </p>
+                    <Button variant="default" size="sm" className="shrink-0 gap-1" asChild>
+                      <Link href={`/tutor?group=${inv.id}`}>
+                        Open in tutor <ArrowRight className="size-3.5" />
+                      </Link>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <div className="mt-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           <Card className="flex flex-col rounded-xl border-border shadow-sm transition-shadow hover:shadow-md">
@@ -376,7 +433,7 @@ export default function DashboardPage() {
                 <ScrollText className="size-5 text-primary" aria-hidden />
                 Cheat sheets
               </CardTitle>
-              <CardDescription>Gemini study one-pagers</CardDescription>
+              <CardDescription>Quick, scannable study sheets</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-1 flex-col">
               <p className="text-3xl font-bold tabular-nums text-foreground">
