@@ -187,7 +187,7 @@ export default function FriendsPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <MarketingHeader />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6">
         <div className="space-y-2">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Friends</h1>
           <p className="text-muted-foreground">
@@ -216,14 +216,15 @@ export default function FriendsPage() {
           </div>
         ) : (
           <div className="mt-8 space-y-8">
-            <Card className="rounded-xl border border-border shadow-sm">
+            <div className="grid gap-6 lg:grid-cols-2 lg:items-stretch">
+            <Card className="flex h-full flex-col rounded-xl border border-border shadow-sm">
               <CardHeader>
                 <CardTitle>Find people</CardTitle>
                 <CardDescription>
                   Search registered users by email (partial match). Then send an invite.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="flex flex-1 flex-col space-y-4">
                 <form onSubmit={onSearch} className="flex flex-col gap-3 sm:flex-row sm:items-end">
                   <div className="flex-1 space-y-2">
                     <Label htmlFor="search-email">Email search</Label>
@@ -248,7 +249,7 @@ export default function FriendsPage() {
                   </Button>
                 </form>
                 {searched ? (
-                  <div className="rounded-lg border border-border bg-muted/20 p-3">
+                  <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border bg-muted/20 p-3 lg:max-h-[min(22rem,40vh)]">
                     {searchResults.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No matching accounts. Try another query.</p>
                     ) : (
@@ -283,18 +284,22 @@ export default function FriendsPage() {
                       </ul>
                     )}
                   </div>
-                ) : null}
+                ) : (
+                  <div className="flex flex-1 items-start rounded-lg border border-dashed border-border/70 bg-muted/10 p-4 text-sm text-muted-foreground lg:min-h-[8rem]">
+                    Run a search to see matching accounts.
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            <Card className="rounded-xl border border-border shadow-sm">
+            <Card className="flex h-full flex-col rounded-xl border border-border shadow-sm">
               <CardHeader>
                 <CardTitle>Invite by exact email</CardTitle>
                 <CardDescription>
                   If you already know their login email, you can invite without searching.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex flex-1 flex-col">
                 <form onSubmit={inviteByEmail} className="flex flex-col gap-3 sm:flex-row sm:items-end">
                   <div className="flex-1 space-y-2">
                     <Label htmlFor="invite-email">Email</Label>
@@ -315,17 +320,60 @@ export default function FriendsPage() {
                 </form>
               </CardContent>
             </Card>
+            </div>
 
-            <Card className="rounded-xl border border-border shadow-sm">
+            <div className="grid gap-6 lg:grid-cols-2 lg:items-stretch">
+            <Card className="flex h-full flex-col rounded-xl border border-border shadow-sm">
+              <CardHeader>
+                <CardTitle>Sent invites</CardTitle>
+                <CardDescription>Waiting for them to accept. You can cancel a request.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-1 flex-col">
+                {outgoing.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No outgoing invites.</p>
+                ) : (
+                  <ul className="max-h-[min(20rem,45vh)] space-y-2 overflow-y-auto lg:max-h-none lg:flex-1">
+                    {outgoing.map((inv) => (
+                      <li
+                        key={inv.id}
+                        className={cn(
+                          "flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-3 text-sm",
+                          "bg-card",
+                        )}
+                      >
+                        <div>
+                          <p className="font-medium">
+                            {inv.user.firstName} {inv.user.lastName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{inv.user.email}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="text-muted-foreground"
+                          disabled={rowBusy === inv.id}
+                          onClick={() => void cancelOutgoing(inv.id)}
+                        >
+                          {rowBusy === inv.id ? <Loader2 className="size-3.5 animate-spin" /> : "Cancel"}
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="flex h-full flex-col rounded-xl border border-border shadow-sm">
               <CardHeader>
                 <CardTitle>Incoming invites</CardTitle>
                 <CardDescription>Accept or decline friend requests.</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex flex-1 flex-col">
                 {incoming.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No pending invites.</p>
                 ) : (
-                  <ul className="space-y-2">
+                  <ul className="max-h-[min(20rem,45vh)] space-y-2 overflow-y-auto lg:max-h-none lg:flex-1">
                     {incoming.map((inv) => (
                       <li
                         key={inv.id}
@@ -370,47 +418,7 @@ export default function FriendsPage() {
                 )}
               </CardContent>
             </Card>
-
-            <Card className="rounded-xl border border-border shadow-sm">
-              <CardHeader>
-                <CardTitle>Sent invites</CardTitle>
-                <CardDescription>Waiting for them to accept. You can cancel a request.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {outgoing.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No outgoing invites.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {outgoing.map((inv) => (
-                      <li
-                        key={inv.id}
-                        className={cn(
-                          "flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-3 text-sm",
-                          "bg-card",
-                        )}
-                      >
-                        <div>
-                          <p className="font-medium">
-                            {inv.user.firstName} {inv.user.lastName}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{inv.user.email}</p>
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="text-muted-foreground"
-                          disabled={rowBusy === inv.id}
-                          onClick={() => void cancelOutgoing(inv.id)}
-                        >
-                          {rowBusy === inv.id ? <Loader2 className="size-3.5 animate-spin" /> : "Cancel"}
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
+            </div>
 
             <Card className="rounded-xl border border-border shadow-sm">
               <CardHeader>
