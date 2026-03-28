@@ -40,6 +40,7 @@ const protectedPrefixes = [
   "/tutor",
   "/cheat-sheets",
   "/bookmarks",
+  "/friends",
 ];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

@@ -452,6 +452,110 @@ export async function apiBookmarkChat(
   return parseJson(res);
 }
 
+export type FriendUserDTO = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+};
+
+export type FriendInviteListItemDTO = {
+  id: string;
+  status: string;
+  user: FriendUserDTO;
+  createdAt: string;
+};
+
+export type FriendEntryDTO = {
+  inviteId: string;
+  since: string;
+  user: FriendUserDTO;
+};
+
+export async function apiSearchFriendsByEmail(
+  token: string,
+  emailQuery: string,
+): Promise<{ users: FriendUserDTO[] }> {
+  const q = new URLSearchParams({ email: emailQuery.trim() });
+  const res = await fetch(`${API_BASE}/api/friends/search?${q}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseJson(res);
+}
+
+export async function apiSendFriendInvite(
+  token: string,
+  body: { toUserId?: string; toEmail?: string },
+): Promise<{ invite: { id: string; status: string; to: FriendUserDTO; createdAt: string } }> {
+  const res = await fetch(`${API_BASE}/api/friends/invites`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  return parseJson(res);
+}
+
+export async function apiListIncomingFriendInvites(
+  token: string,
+): Promise<{ invites: FriendInviteListItemDTO[] }> {
+  const res = await fetch(`${API_BASE}/api/friends/invites/incoming`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseJson(res);
+}
+
+export async function apiListOutgoingFriendInvites(
+  token: string,
+): Promise<{ invites: FriendInviteListItemDTO[] }> {
+  const res = await fetch(`${API_BASE}/api/friends/invites/outgoing`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseJson(res);
+}
+
+export async function apiAcceptFriendInvite(
+  token: string,
+  inviteId: string,
+): Promise<{ invite: { id: string; status: string; friend: FriendUserDTO } }> {
+  const res = await fetch(`${API_BASE}/api/friends/invites/${inviteId}/accept`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseJson(res);
+}
+
+export async function apiDeclineFriendInvite(
+  token: string,
+  inviteId: string,
+): Promise<{ ok: boolean }> {
+  const res = await fetch(`${API_BASE}/api/friends/invites/${inviteId}/decline`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseJson(res);
+}
+
+export async function apiCancelOutgoingFriendInvite(
+  token: string,
+  inviteId: string,
+): Promise<{ ok: boolean }> {
+  const res = await fetch(`${API_BASE}/api/friends/invites/${inviteId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseJson(res);
+}
+
+export async function apiListFriends(token: string): Promise<{ friends: FriendEntryDTO[] }> {
+  const res = await fetch(`${API_BASE}/api/friends`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseJson(res);
+}
+
 export type TutorSlideDTO = {
   title: string;
   points: string[];
