@@ -5,7 +5,7 @@ export default function SignupPage() {
   return (
     <AuthLayout
       title="Create your account"
-      subtitle="Join Acadomi for AI-led teaching, debates, and collaborative study."
+      subtitle="Create an account to save uploads and Gemini-processed study materials under your profile."
     >
       <SignupForm />
     </AuthLayout>

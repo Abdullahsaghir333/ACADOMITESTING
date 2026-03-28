@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono, Manrope } from "next/font/google";
 
 import "./globals.css";
 import { Providers } from "@/components/providers";
+import { AuthProvider } from "@/context/auth-context";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -40,7 +41,9 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full bg-background font-sans text-foreground">
-        <Providers>{children}</Providers>
+        <Providers>
+          <AuthProvider>{children}</AuthProvider>
+        </Providers>
       </body>
     </html>
   );

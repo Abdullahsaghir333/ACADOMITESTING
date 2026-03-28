@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { HomeHeroCtas } from "@/components/home-hero-ctas";
 import { MarketingHeader } from "@/components/marketing-header";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,12 +38,7 @@ export default function HomePage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-3">
-                <Button className="h-11 px-6 font-medium" asChild>
-                  <Link href="/signup">Get started</Link>
-                </Button>
-                <Button variant="outline" className="h-11 px-6 shadow-xs" asChild>
-                  <Link href="/login">Log in</Link>
-                </Button>
+                <HomeHeroCtas />
               </CardContent>
             </Card>
           </div>
@@ -55,8 +51,8 @@ export default function HomePage() {
                 Platform map
               </h2>
               <p className="text-muted-foreground">
-                Every link below is wired in the nav; implementation rolls out with
-                your backend and Python pipelines.
+                Uploads &amp; auth are live (MongoDB + Gemini). Other tiles are placeholders for
+                upcoming FYP milestones.
               </p>
             </div>
             <div className="grid gap-6 sm:grid-cols-2">

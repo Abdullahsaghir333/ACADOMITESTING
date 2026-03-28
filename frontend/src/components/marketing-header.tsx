@@ -2,10 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronDown, Menu } from "lucide-react";
+import { ChevronDown, LayoutDashboard, LogOut, Menu, Settings, Upload } from "lucide-react";
 import { useState } from "react";
 
 import { mainNav, platformNav } from "@/lib/navigation";
+import { useAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Separator } from "@/components/ui/separator";
@@ -14,6 +15,7 @@ import { cn } from "@/lib/utils";
 export function MarketingHeader() {
   const [open, setOpen] = useState(false);
   const [mega, setMega] = useState(false);
+  const { user, loading, signOut } = useAuth();
 
   return (
     <header
@@ -29,15 +31,39 @@ export function MarketingHeader() {
         <Separator orientation="vertical" className="hidden h-4 sm:block" />
 
         <nav className="hidden items-center gap-1 lg:flex">
-          {mainNav.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            >
-              {item.label}
-            </Link>
-          ))}
+          <Link
+            href={user ? "/dashboard" : "/"}
+            className="rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            {user ? "Dashboard" : "Home"}
+          </Link>
+          {mainNav
+            .filter((item) => item.href !== "/" || !user)
+            .map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                {item.label}
+              </Link>
+            ))}
+          {user ? (
+            <>
+              <Link
+                href="/upload"
+                className="rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                Uploads
+              </Link>
+              <Link
+                href="/settings"
+                className="rounded-md px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                Settings
+              </Link>
+            </>
+          ) : null}
           <div
             className="relative"
             onMouseEnter={() => setMega(true)}
@@ -69,12 +95,28 @@ export function MarketingHeader() {
 
         <div className="hidden items-center gap-2 sm:flex">
           <ThemeToggle />
-          <Button variant="outline" className="shadow-xs" asChild>
-            <Link href="/login">Log in</Link>
-          </Button>
-          <Button className="font-medium" asChild>
-            <Link href="/signup">Sign up</Link>
-          </Button>
+          {loading ? (
+            <div className="h-9 w-20 animate-pulse rounded-md bg-muted" aria-hidden />
+          ) : user ? (
+            <>
+              <span className="max-w-[140px] truncate text-sm text-muted-foreground" title={user.email}>
+                {user.firstName}
+              </span>
+              <Button variant="outline" className="gap-2 shadow-xs" onClick={() => signOut()}>
+                <LogOut className="size-4" />
+                Log out
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" className="shadow-xs" asChild>
+                <Link href="/login">Log in</Link>
+              </Button>
+              <Button className="font-medium" asChild>
+                <Link href="/signup">Sign up</Link>
+              </Button>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-2 sm:hidden">
@@ -94,6 +136,34 @@ export function MarketingHeader() {
       {open ? (
         <div className="border-t border-border bg-background px-4 py-4 lg:hidden">
           <nav className="flex flex-col gap-1">
+            {user ? (
+              <>
+                <Link
+                  href="/dashboard"
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
+                  onClick={() => setOpen(false)}
+                >
+                  <LayoutDashboard className="size-4" />
+                  Dashboard
+                </Link>
+                <Link
+                  href="/upload"
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
+                  onClick={() => setOpen(false)}
+                >
+                  <Upload className="size-4" />
+                  Uploads
+                </Link>
+                <Link
+                  href="/settings"
+                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
+                  onClick={() => setOpen(false)}
+                >
+                  <Settings className="size-4" />
+                  Settings
+                </Link>
+              </>
+            ) : null}
             {mainNav.map((item) => (
               <Link
                 key={item.href}
@@ -105,7 +175,7 @@ export function MarketingHeader() {
               </Link>
             ))}
             <p className="px-3 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Platform (coming soon)
+              Platform roadmap
             </p>
             {[
               ...platformNav.learn,
@@ -116,22 +186,34 @@ export function MarketingHeader() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={cn(
-                  "rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                  item.href === "/friends" && "text-foreground font-medium",
-                )}
+                className="rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 onClick={() => setOpen(false)}
               >
                 {item.label}
               </Link>
             ))}
             <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
-              <Button variant="outline" className="w-full shadow-xs" asChild>
-                <Link href="/login">Log in</Link>
-              </Button>
-              <Button className="w-full" asChild>
-                <Link href="/signup">Sign up</Link>
-              </Button>
+              {user ? (
+                <Button
+                  variant="outline"
+                  className="w-full shadow-xs"
+                  onClick={() => {
+                    signOut();
+                    setOpen(false);
+                  }}
+                >
+                  Log out
+                </Button>
+              ) : (
+                <>
+                  <Button variant="outline" className="w-full shadow-xs" asChild>
+                    <Link href="/login">Log in</Link>
+                  </Button>
+                  <Button className="w-full" asChild>
+                    <Link href="/signup">Sign up</Link>
+                  </Button>
+                </>
+              )}
             </div>
           </nav>
         </div>

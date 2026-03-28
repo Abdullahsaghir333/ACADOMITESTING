@@ -2,8 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Loader2, PartyPopper } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
+import { apiLogin } from "@/lib/api";
+import { useAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,35 +15,39 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 
 export function LoginForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { signIn, user, ready } = useAuth();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [success, setSuccess] = React.useState<string | null>(null);
 
-  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  React.useEffect(() => {
+    if (ready && user) {
+      router.replace("/dashboard");
+    }
+  }, [ready, user, router]);
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    setSuccess(null);
     setLoading(true);
-    window.setTimeout(() => {
+    const form = e.currentTarget;
+    const email = (form.elements.namedItem("email") as HTMLInputElement).value;
+    const password = (form.elements.namedItem("password") as HTMLInputElement).value;
+    try {
+      const { token, user } = await apiLogin({ email, password });
+      signIn(token, user);
+      const next = searchParams.get("next");
+      router.replace(next && next.startsWith("/") ? next : "/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign in failed.");
+    } finally {
       setLoading(false);
-      setSuccess("Signed in successfully (demo — connect API later).");
-    }, 800);
+    }
   }
 
   return (
-    <form
-      onSubmit={onSubmit}
-      className={cn("flex flex-col gap-5", loading && "opacity-70")}
-    >
-      {success ? (
-        <Alert variant="success">
-          <PartyPopper className="text-primary" strokeWidth={2} />
-          <div className="min-w-0 flex-1 space-y-1">
-            <AlertTitle>Welcome back</AlertTitle>
-            <AlertDescription>{success}</AlertDescription>
-          </div>
-        </Alert>
-      ) : null}
+    <form onSubmit={onSubmit} className={cn("flex flex-col gap-5", loading && "opacity-70")}>
       {error ? (
         <Alert variant="destructive">
           <div className="min-w-0 flex-1 space-y-1">
@@ -72,7 +79,7 @@ export function LoginForm() {
             href="/forgot-password"
             className="rounded-sm text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
-            Forgot your password?
+            Forgot password?
           </Link>
         </div>
         <PasswordInput
@@ -95,26 +102,6 @@ export function LoginForm() {
         ) : (
           "Sign in"
         )}
-      </Button>
-
-      <div className="relative py-2">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t border-border" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-background px-2 text-muted-foreground">
-            Or continue with
-          </span>
-        </div>
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        className="h-11 w-full shadow-xs"
-        disabled={loading}
-      >
-        Single Sign-On
       </Button>
 
       <p className="text-center text-sm text-muted-foreground">

@@ -2,9 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
-import { DIAL_CODES } from "@/lib/phone-regions";
+import { apiRegister } from "@/lib/api";
+import { useAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,40 +15,66 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 
 export function SignupForm() {
+  const router = useRouter();
+  const { signIn, user, ready } = useAuth();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [success, setSuccess] = React.useState<string | null>(null);
-  const [dial, setDial] = React.useState<string>(DIAL_CODES[0].value);
 
-  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  React.useEffect(() => {
+    if (ready && user) {
+      router.replace("/dashboard");
+    }
+  }, [ready, user, router]);
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    setSuccess(null);
     setLoading(true);
-    window.setTimeout(() => {
+    const form = e.currentTarget;
+    const firstName = (form.elements.namedItem("firstName") as HTMLInputElement).value;
+    const lastName = (form.elements.namedItem("lastName") as HTMLInputElement).value;
+    const email = (form.elements.namedItem("email") as HTMLInputElement).value;
+    const password = (form.elements.namedItem("password") as HTMLInputElement).value;
+    try {
+      const { token, user } = await apiRegister({
+        email,
+        password,
+        firstName,
+        lastName,
+      });
+      signIn(token, user);
+      router.replace("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create account.");
+    } finally {
       setLoading(false);
-      setSuccess("Check your inbox to confirm your email (demo).");
-    }, 900);
+    }
   }
 
   return (
-    <form
-      onSubmit={onSubmit}
-      className={cn("flex flex-col gap-5", loading && "opacity-70")}
-    >
-      {success ? (
-        <Alert variant="success">
-          <div>
-            <AlertTitle>Account created</AlertTitle>
-            <AlertDescription>{success}</AlertDescription>
-          </div>
-        </Alert>
-      ) : null}
+    <form onSubmit={onSubmit} className={cn("flex flex-col gap-5", loading && "opacity-70")}>
       {error ? (
-        <Alert variant="destructive">
+        <Alert variant={error.includes("already exists") ? "default" : "destructive"}>
           <div>
-            <AlertTitle>Sign up failed</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
+            <AlertTitle>
+              {error.includes("already exists")
+                ? "You already have an account"
+                : "Sign up failed"}
+            </AlertTitle>
+            <AlertDescription className="space-y-2">
+              <span>{error}</span>
+              {error.includes("already exists") ? (
+                <span className="block">
+                  <Link
+                    href="/login"
+                    className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 rounded-sm"
+                  >
+                    Log in with this email
+                  </Link>{" "}
+                  or use a different address to register again.
+                </span>
+              ) : null}
+            </AlertDescription>
           </div>
         </Alert>
       ) : null}
@@ -91,52 +119,17 @@ export function SignupForm() {
       </div>
 
       <div className="space-y-2">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <Label htmlFor="phone">Phone number</Label>
-          <span className="text-xs text-muted-foreground">Country: detecting…</span>
-        </div>
-        <div className="flex gap-2">
-          <select
-            id="dial"
-            name="dialCode"
-            value={dial}
-            onChange={(e) => setDial(e.target.value)}
-            disabled={loading}
-            className={cn(
-              "flex h-11 shrink-0 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none",
-              "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
-              "dark:bg-input/30 disabled:opacity-50",
-            )}
-            aria-label="Country dial code"
-          >
-            {DIAL_CODES.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-          <Input
-            id="phone"
-            name="phone"
-            type="tel"
-            autoComplete="tel"
-            placeholder="123 456 7890"
-            className="h-11 flex-1 text-base md:text-sm"
-            disabled={loading}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
         <Label htmlFor="signup-password">Password</Label>
         <PasswordInput
           id="signup-password"
           name="password"
           autoComplete="new-password"
           required
+          minLength={8}
           className="h-11 text-base md:text-sm"
           disabled={loading}
         />
+        <p className="text-xs text-muted-foreground">At least 8 characters.</p>
       </div>
 
       <Button type="submit" className="h-11 w-full font-medium" disabled={loading}>
@@ -154,7 +147,7 @@ export function SignupForm() {
         Already have an account?{" "}
         <Link
           href="/login"
-          className="font-medium text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 rounded-sm"
+          className="rounded-sm font-medium text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
           Log in
         </Link>
