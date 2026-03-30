@@ -321,19 +321,16 @@ export default function TutorPage() {
   const answerResumeTimeRef = React.useRef(0);
   const lecturePointRefs = React.useRef<(HTMLLIElement | null)[]>([]);
   const qaBulletRefs = React.useRef<(HTMLLIElement | null)[]>([]);
-  const lectureStageRef = React.useRef<HTMLDivElement | null>(null);
-  const [avatarPointer, setAvatarPointer] = React.useState({
-    x: 0,
-    y: 0,
-    stageWidth: 0,
-    visible: false,
-  });
   const avatarListening = asking || questionSubmitting;
-  const avatarTeaching =
-    tutorView === "lecture" &&
-    !avatarListening &&
-    narrationBulletIndex !== null &&
-    playingSlide === slideIndex;
+  const avatarTeaching = tutorView === "lecture" && !avatarListening;
+  const avatarPaused = tutorView === "lecture" && !avatarListening && playingSlide === null;
+  const avatarMoodClass = avatarListening
+    ? "border-violet-400/60 bg-violet-500/10 shadow-[0_0_0_4px_rgba(139,92,246,0.15)]"
+    : avatarPaused
+      ? "border-amber-400/60 bg-amber-500/10 shadow-[0_0_0_4px_rgba(245,158,11,0.12)]"
+      : "border-primary/50 bg-primary/10 shadow-[0_0_0_4px_rgba(59,130,246,0.12)]";
+  const avatarFace = avatarListening ? "😮" : avatarPaused ? "🙂" : "😄";
+  const avatarLabel = avatarListening ? "Listening..." : avatarPaused ? "Paused" : "Teaching";
 
   const lastQaAnswerBullets = React.useMemo(
     () => (lastQa?.answer ? parseAnswerIntoBullets(lastQa.answer) : []),
@@ -351,42 +348,6 @@ export default function TutorPage() {
     const el = qaBulletRefs.current[answerBulletIndex];
     el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [tutorView, answerBulletIndex]);
-
-  React.useEffect(() => {
-    if (!avatarTeaching) {
-      setAvatarPointer((prev) => (prev.visible ? { ...prev, visible: false } : prev));
-      return;
-    }
-    const update = () => {
-      const stage = lectureStageRef.current;
-      if (!stage || narrationBulletIndex == null) return;
-      const activePoint = lecturePointRefs.current[narrationBulletIndex];
-      if (!activePoint) {
-        setAvatarPointer((prev) => (prev.visible ? { ...prev, visible: false } : prev));
-        return;
-      }
-      const sRect = stage.getBoundingClientRect();
-      const pRect = activePoint.getBoundingClientRect();
-      const x = pRect.left - sRect.left + 8;
-      const y = pRect.top - sRect.top + Math.min(18, Math.max(8, pRect.height * 0.4));
-      const visible = y >= -6 && y <= sRect.height + 6;
-      setAvatarPointer({
-        x: Math.max(0, x),
-        y: Math.max(0, y),
-        stageWidth: Math.max(0, sRect.width),
-        visible,
-      });
-    };
-    update();
-    window.addEventListener("scroll", update, true);
-    window.addEventListener("resize", update);
-    const id = window.setInterval(update, 140);
-    return () => {
-      window.removeEventListener("scroll", update, true);
-      window.removeEventListener("resize", update);
-      window.clearInterval(id);
-    };
-  }, [avatarTeaching, narrationBulletIndex]);
 
   const cancelSubtitleRaf = React.useCallback(() => {
     if (subtitleRafRef.current != null) {
@@ -2151,6 +2112,38 @@ export default function TutorPage() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
+                      {(avatarTeaching || avatarListening) && (
+                        <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={cn(
+                                "relative flex h-16 w-14 shrink-0 items-end justify-center overflow-hidden rounded-lg border bg-background transition-all duration-300",
+                                avatarMoodClass,
+                              )}
+                              aria-hidden
+                            >
+                              <span className="absolute top-1 text-[22px] leading-none">{avatarFace}</span>
+                              <span className="absolute bottom-1 text-[10px] text-muted-foreground">teacher</span>
+                              {avatarListening ? (
+                                <span className="absolute -right-1 -top-1 inline-flex h-3 w-3 animate-ping rounded-full bg-violet-500" />
+                              ) : null}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Virtual teacher
+                              </p>
+                              <p className="text-sm font-medium text-foreground">{avatarLabel}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {avatarListening
+                                  ? "I am listening to your question carefully."
+                                  : avatarPaused
+                                    ? "Session is paused. Press play when you are ready."
+                                    : "I am guiding you through this slide."}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       {tutorView === "qa" ? (
                         <div className="space-y-4">
                           {questionSubmitting && !lastQa ? (
@@ -2251,7 +2244,7 @@ export default function TutorPage() {
                           ) : null}
                         </div>
                       ) : slide ? (
-                        <div ref={lectureStageRef} className="relative space-y-4 pr-16 sm:pr-20">
+                        <div className="space-y-4">
                           <h2
                             className={cn(
                               "text-xl font-semibold tracking-tight text-primary transition-all duration-300",
@@ -2336,47 +2329,6 @@ export default function TutorPage() {
                               </p>
                             </div>
                           </div>
-                          {(avatarTeaching || avatarListening) && (
-                            <div className="pointer-events-none absolute right-1 top-2 z-20 flex flex-col items-center">
-                              <div
-                                className={cn(
-                                  "relative flex size-11 items-center justify-center rounded-full border bg-background shadow-sm",
-                                  avatarListening
-                                    ? "border-violet-400/50 ring-2 ring-violet-400/25"
-                                    : "border-primary/40",
-                                )}
-                                aria-hidden
-                              >
-                                <GraduationCap className="size-5 text-primary" aria-hidden />
-                                {avatarListening ? (
-                                  <span className="absolute -bottom-1.5 -right-1.5 inline-flex size-3.5 animate-ping rounded-full bg-violet-500" />
-                                ) : null}
-                              </div>
-                              <span className="mt-1 rounded bg-background/95 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border">
-                                {avatarListening ? "Listening…" : "Teaching"}
-                              </span>
-                            </div>
-                          )}
-                          {avatarTeaching && avatarPointer.visible ? (
-                            <svg className="pointer-events-none absolute inset-0 z-10" aria-hidden>
-                              <line
-                                x1={Math.max(12, avatarPointer.stageWidth - 26)}
-                                y1={26}
-                                x2={avatarPointer.x}
-                                y2={avatarPointer.y}
-                                stroke="currentColor"
-                                strokeWidth="2.2"
-                                strokeLinecap="round"
-                                className="text-primary/70"
-                              />
-                              <circle
-                                cx={avatarPointer.x}
-                                cy={avatarPointer.y}
-                                r="3"
-                                className="fill-primary/80"
-                              />
-                            </svg>
-                          ) : null}
                         </div>
                       ) : null}
                       <div className="flex flex-col gap-3 border-t border-border pt-4">
