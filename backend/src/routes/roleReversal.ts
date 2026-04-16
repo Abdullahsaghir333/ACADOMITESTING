@@ -6,6 +6,7 @@ import { RoleReversalSession } from "../models/RoleReversalSession.js";
 import { Upload } from "../models/Upload.js";
 import { authMiddleware, type AuthedRequest } from "../middleware/auth.js";
 import { evaluateRoleReversalTeaching, transcribeAudio } from "../services/gemini.js";
+import { hasGeminiForTranscription, isLlmConfigured } from "../services/llm/llmReady.js";
 
 const router = Router();
 const MAX_SESSIONS_PER_USER = 30;
@@ -44,8 +45,17 @@ router.post(
   authMiddleware,
   upload.single("audio"),
   async (req: AuthedRequest, res: Response) => {
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+    if (!hasGeminiForTranscription()) {
+      return res.status(500).json({
+        error:
+          "Speech transcription requires GEMINI_API_KEY (audio→text). Evaluation can use Ollama when LLM_BACKEND=ollama.",
+      });
+    }
+    if (!isLlmConfigured()) {
+      return res.status(500).json({
+        error:
+          "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
+      });
     }
 
     const topic = typeof req.body?.topic === "string" ? req.body.topic.trim() : "";

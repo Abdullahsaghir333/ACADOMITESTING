@@ -1,0 +1,35 @@
+# Acadomi LLM Usage Mapping
+
+This document details which Language Model (LLM) is used for which specific feature across the Acadomi project. The platform uses Google's Gemini models by default, with fallback support for local Ollama models depending on the environment configuration (`LLM_BACKEND`).
+
+## Features & LLM Mapping
+
+### 1. AI Tutor (Slides, Live Q&A, ELI5)
+- **Primary LLM:** Gemini (e.g., `gemini-2.5-flash` or configurable via `GEMINI_MODEL`)
+- **Fallback/Local:** Llama / Custom Models via Ollama (configured via `OLLAMA_MODEL_TUTOR`)
+- **Location:** `completeTutorPrompt` inside `router.ts`
+
+### 2. Study Notes & Bookmark Recap/Chat
+- **Primary LLM:** Gemini
+- **Fallback/Local:** Lightweight local model via Ollama (configured via `OLLAMA_MODEL_LIGHT`)
+- **Location:** `completeLightPrompt` inside `router.ts`
+
+### 3. Role-Reversal Q&A & Cheat Sheets (Structured Outputs)
+- **Primary LLM:** Gemini
+- **Fallback/Local:** Formatted JSON output model via Ollama (configured via `OLLAMA_MODEL_STRUCTURED`)
+- **Location:** `completeStructuredPrompt` inside `router.ts`
+
+### 4. Image Text Extraction / Vision (OCR)
+- **Primary LLM (Multimodal):** Gemini Vision
+- **Alternatives:** `tesseract.js` (standard OCR) or Ollama Vision Chat (configured via `OLLAMA_MODEL_VISION`)
+- **Location:** `extractTextFromImage` inside `router.ts`
+
+### 5. Audio Transcription (Speech-to-Text)
+- **Primary LLM:** Gemini (multimodal audio transcription)
+- **Note:** Only Gemini is used here in the core backend. If an API key is missing, requires a local Whisper server or client-side transcription.
+- **Location:** `transcribeAudioBuffer` inside `router.ts`
+
+### 6. Podcast Generation (Script Writing)
+- **Primary LLM:** Gemini (`gemini-2.5-flash` by default)
+- **Action:** Converts study materials and notes into a natural two-person (Alice & Bob) conversational dialogue (JSON). This is then pumped into `gTTS` for Text-to-Speech logic.
+- **Location:** `generate_script_from_gemini` inside `python/services/podcast/podcast_logic.py`

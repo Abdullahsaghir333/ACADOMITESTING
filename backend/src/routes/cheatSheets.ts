@@ -5,6 +5,7 @@ import { CheatSheet, type CheatSheetLean } from "../models/CheatSheet.js";
 import { Upload } from "../models/Upload.js";
 import { authMiddleware, type AuthedRequest } from "../middleware/auth.js";
 import { generateSmartCheatSheetMarkdown } from "../services/gemini.js";
+import { isLlmConfigured } from "../services/llm/llmReady.js";
 
 const router = Router();
 const MAX_CHEAT_SHEETS_PER_USER = 30;
@@ -43,8 +44,11 @@ router.get("/", authMiddleware, async (req: AuthedRequest, res: Response) => {
 });
 
 router.post("/generate", authMiddleware, async (req: AuthedRequest, res: Response) => {
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+  if (!isLlmConfigured()) {
+    return res.status(500).json({
+      error:
+        "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
+    });
   }
 
   const uploadId = typeof req.body?.uploadId === "string" ? req.body.uploadId.trim() : "";

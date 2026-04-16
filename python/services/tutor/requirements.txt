@@ -9,4 +9,4 @@ opencv-python>=4.8.0
 # Also requires Python 3.10–3.12; mediapipe 0.10.21 pins numpy<2.
 mediapipe>=0.10.21,<0.10.30; python_version<"3.13"
 numpy>=1.24.0,<2
-gTTS>=2.5.0
+edge-tts>=7.0.0

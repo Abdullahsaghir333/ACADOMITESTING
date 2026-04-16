@@ -9,6 +9,7 @@ import {
   synthesizeLearningNotes,
   transcribeAudio,
 } from "../services/gemini.js";
+import { hasGeminiForTranscription, isLlmConfigured } from "../services/llm/llmReady.js";
 
 const router = Router();
 const MAX_UPLOADS_PER_USER = 7;
@@ -50,12 +51,22 @@ router.post(
   authMiddleware,
   upload.array("files"),
   async (req: AuthedRequest, res: Response) => {
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
-    }
-
     const files = req.files as Express.Multer.File[] | undefined;
     const kind = req.body?.type as string | undefined;
+
+    if (!isLlmConfigured()) {
+      return res.status(500).json({
+        error:
+          "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
+      });
+    }
+    if (kind === "audio" && !hasGeminiForTranscription()) {
+      return res.status(500).json({
+        error:
+          "Audio uploads need GEMINI_API_KEY for speech-to-text. Use PDF/images with Ollama-only mode, or add GEMINI_API_KEY.",
+      });
+    }
+
     const userPrompt = typeof req.body?.prompt === "string" ? req.body.prompt : "";
     const titleFromUser =
       typeof req.body?.title === "string" ? req.body.title.trim().slice(0, 200) : "";

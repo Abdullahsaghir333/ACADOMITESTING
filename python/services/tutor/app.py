@@ -1,5 +1,5 @@
 """
-Acadomi tutor microservice: gTTS narration + MediaPipe focus (called by Node only).
+Acadomi tutor microservice: Edge TTS (Microsoft neural voices) + MediaPipe focus (called by Node only).
 Slides and Q&A use Gemini on the Express API.
 """
 
@@ -9,14 +9,13 @@ import base64
 import os
 import traceback
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from io import BytesIO
 
 import cv2
+import edge_tts
 import numpy as np
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from gtts import gTTS
 from pydantic import BaseModel, Field
 
 from focus_tracker import FocusTracker, mediapipe_import_ok
@@ -31,6 +30,8 @@ app = FastAPI(title="Acadomi Tutor Service", version="1.0.0")
 # different thread-pool worker, so we funnel all tracker work through one dedicated thread.
 _trackers: dict[str, FocusTracker] = {}
 _face_exec = ThreadPoolExecutor(max_workers=1, thread_name_prefix="acadomi_focus")
+
+EDGE_TTS_VOICE = os.environ.get("EDGE_TTS_VOICE", "en-US-ChristopherNeural").strip()
 
 
 class TtsBody(BaseModel):
@@ -116,19 +117,30 @@ def health() -> dict:
     }
 
 
+async def _synthesize_edge_tts(text: str) -> bytes:
+    communicate = edge_tts.Communicate(text, EDGE_TTS_VOICE)
+    chunks: list[bytes] = []
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            chunks.append(chunk["data"])
+    return b"".join(chunks)
+
+
 @app.post("/tts")
-def tts(body: TtsBody) -> dict:
+async def tts(body: TtsBody) -> dict:
     text = body.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="text is empty")
     try:
-        buf = BytesIO()
-        gTTS(text=text, lang="en", slow=False).write_to_fp(buf)
-        raw = buf.getvalue()
+        raw = await _synthesize_edge_tts(text)
+        if not raw:
+            raise HTTPException(status_code=500, detail="empty audio from TTS")
         return {
             "mimeType": "audio/mpeg",
             "audioBase64": base64.b64encode(raw).decode("utf-8"),
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 

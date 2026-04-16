@@ -11,6 +11,7 @@ import { authMiddleware, type AuthedRequest } from "../middleware/auth.js";
 import { clearGroupChat } from "../socket/groupChatStore.js";
 import { getSocketIo } from "../socket/socketRegistry.js";
 import { answerTutorQuestion, transcribeAudio } from "../services/gemini.js";
+import { hasGeminiForTranscription, isLlmConfigured } from "../services/llm/llmReady.js";
 import { tutorPyTts } from "../services/tutorPythonClient.js";
 
 const router = Router();
@@ -29,6 +30,7 @@ function serializeSession(s: TutorSessionLean) {
       title: sl.title,
       points: sl.points,
       script: sl.script,
+      pointTimings: sl.pointTimings ?? [],
     })),
     status: s.status,
     errorMessage: s.errorMessage,
@@ -454,8 +456,17 @@ router.post("/:id/tts", authMiddleware, async (req: AuthedRequest, res: Response
 });
 
 router.post("/:id/ask", authMiddleware, upload.single("audio"), async (req: AuthedRequest, res: Response) => {
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+  if (!hasGeminiForTranscription()) {
+    return res.status(500).json({
+      error:
+        "Speech transcription requires GEMINI_API_KEY on the server. Tutor answers use Ollama when LLM_BACKEND=ollama.",
+    });
+  }
+  if (!isLlmConfigured()) {
+    return res.status(500).json({
+      error:
+        "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
+    });
   }
 
   const groupId = req.params.id;

@@ -100,7 +100,7 @@ function wordRangesForBulletSync(script: string, points: string[]): { start: num
   const weights = points.map((p) => Math.max(1, tokenizeScript(p).length));
   const sum = weights.reduce((a, b) => a + b, 0);
   const sizes = weights.map((w) => Math.max(1, Math.floor((n * w) / sum)));
-  let total = sizes.reduce((a, b) => a + b, 0);
+  const total = sizes.reduce((a, b) => a + b, 0);
   let diff = n - total;
   let i = 0;
   while (diff !== 0 && sizes.length) {
@@ -138,6 +138,31 @@ function wordRangesForBulletSync(script: string, points: string[]): { start: num
     ranges[ranges.length - 1].end = n;
   }
   return ranges;
+}
+
+const LECTURE_TYPEWRITER_MS = 30;
+
+type SlidePointTiming = { startMs: number; endMs: number };
+
+function scalePointTimingsToDuration(timings: SlidePointTiming[], durationSec: number): SlidePointTiming[] {
+  if (!timings.length || !Number.isFinite(durationSec) || durationSec <= 0) return timings;
+  const lastEnd = timings[timings.length - 1]?.endMs ?? 0;
+  if (lastEnd <= 0) return timings;
+  const scale = (durationSec * 1000) / lastEnd;
+  return timings.map((t) => ({
+    startMs: t.startMs * scale,
+    endMs: t.endMs * scale,
+  }));
+}
+
+/** Largest bullet index whose start time has passed (for sequential slide reveal). */
+function activePointIndexFromTimings(tMs: number, scaled: SlidePointTiming[]): number {
+  let active = -1;
+  for (let i = 0; i < scaled.length; i++) {
+    if (tMs >= scaled[i].startMs) active = i;
+    else break;
+  }
+  return active;
 }
 
 /** Turn tutor answer text into lines for the Q&A slide (bullets or sentences). */
@@ -226,6 +251,8 @@ export default function TutorPage() {
   const [tutorView, setTutorView] = React.useState<"lecture" | "qa">("lecture");
   /** Which bullet on the current slide tracks the spoken script (time-synced estimate). */
   const [narrationBulletIndex, setNarrationBulletIndex] = React.useState<number | null>(null);
+  /** Typewriter text for the active bullet when using server-provided point timings. */
+  const [lectureTypewriterText, setLectureTypewriterText] = React.useState("");
   /** Which answer bullet tracks the spoken reply. */
   const [answerBulletIndex, setAnswerBulletIndex] = React.useState<number | null>(null);
 
@@ -321,6 +348,9 @@ export default function TutorPage() {
   const answerResumeTimeRef = React.useRef(0);
   const lecturePointRefs = React.useRef<(HTMLLIElement | null)[]>([]);
   const qaBulletRefs = React.useRef<(HTMLLIElement | null)[]>([]);
+  const lectureTimingModeRef = React.useRef(false);
+  const scaledLectureTimingsRef = React.useRef<SlidePointTiming[]>([]);
+  const typewriterIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const avatarListening = asking || questionSubmitting;
   const avatarTeaching = tutorView === "lecture" && !avatarListening;
   const avatarPaused = tutorView === "lecture" && !avatarListening && playingSlide === null;
@@ -338,10 +368,46 @@ export default function TutorPage() {
   );
 
   React.useEffect(() => {
-    if (tutorView !== "lecture" || narrationBulletIndex == null) return;
+    if (tutorView !== "lecture" || narrationBulletIndex == null || narrationBulletIndex < 0) return;
     const el = lecturePointRefs.current[narrationBulletIndex];
     el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [tutorView, narrationBulletIndex]);
+
+  const clearLectureTypewriterInterval = React.useCallback(() => {
+    if (typewriterIntervalRef.current != null) {
+      clearInterval(typewriterIntervalRef.current);
+      typewriterIntervalRef.current = null;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (narrationBulletIndex === null) {
+      clearLectureTypewriterInterval();
+      setLectureTypewriterText("");
+      return;
+    }
+    if (!lectureTimingModeRef.current) return;
+    if (narrationBulletIndex < 0) {
+      clearLectureTypewriterInterval();
+      setLectureTypewriterText("");
+      setNarrationSubtitleLine("");
+      return;
+    }
+    const s = activeSession;
+    const pi = playingSlide;
+    if (!s || pi === null) return;
+    const sl = s.slides[pi];
+    const full = sl?.points[narrationBulletIndex] ?? "";
+    clearLectureTypewriterInterval();
+    let shown = "";
+    typewriterIntervalRef.current = setInterval(() => {
+      shown = full.slice(0, shown.length + 1);
+      setLectureTypewriterText(shown);
+      setNarrationSubtitleLine(shown);
+      if (shown.length >= full.length) clearLectureTypewriterInterval();
+    }, LECTURE_TYPEWRITER_MS);
+    return () => clearLectureTypewriterInterval();
+  }, [narrationBulletIndex, activeSession, playingSlide, clearLectureTypewriterInterval]);
 
   React.useEffect(() => {
     if (tutorView !== "qa" || answerBulletIndex == null) return;
@@ -1079,6 +1145,9 @@ export default function TutorPage() {
     setPlayingAnswer(false);
     setNarrationSubtitleLine("");
     setAnswerSubtitleLine("");
+    lectureTimingModeRef.current = false;
+    clearLectureTypewriterInterval();
+    setLectureTypewriterText("");
     setNarrationBulletIndex(null);
     setAnswerBulletIndex(null);
   }
@@ -1119,6 +1188,9 @@ export default function TutorPage() {
     setPlayingSlide(null);
     setNarrationSubtitleLine("");
     setAnswerSubtitleLine("");
+    lectureTimingModeRef.current = false;
+    clearLectureTypewriterInterval();
+    setLectureTypewriterText("");
     setNarrationBulletIndex(null);
     setAnswerBulletIndex(null);
   }
@@ -1220,10 +1292,22 @@ export default function TutorPage() {
     const words = tokenizeScript(scriptText);
     setNarrationSubtitleLine("");
     setTutorView("lecture");
-    setNarrationBulletIndex(null);
     setAnswerBulletIndex(null);
+    clearLectureTypewriterInterval();
+    setLectureTypewriterText("");
     const slideForSync = s.slides[idx];
     const segmentRanges = wordRangesForBulletSync(scriptText, slideForSync?.points ?? []);
+    const timingMode =
+      !!(
+        slideForSync &&
+        slideForSync.pointTimings &&
+        slideForSync.pointTimings.length === slideForSync.points.length &&
+        slideForSync.points.length > 0 &&
+        !isEli5Track &&
+        opts?.scriptOverride === undefined
+      );
+    lectureTimingModeRef.current = timingMode;
+    setNarrationBulletIndex(timingMode ? -1 : null);
     try {
       let url = narrationUrlsRef.current[audioKey];
       if (!url) {
@@ -1249,10 +1333,36 @@ export default function TutorPage() {
           if (saved > 0.2 && Number.isFinite(dur) && dur > 0 && saved < dur - 0.12) {
             a.currentTime = saved;
           }
-          attachPlaybackSyncRaf(a, words, setNarrationSubtitleLine, {
-            segmentRanges,
-            setActiveSegment: setNarrationBulletIndex,
-          });
+          if (
+            timingMode &&
+            slideForSync?.pointTimings &&
+            Number.isFinite(dur) &&
+            dur > 0
+          ) {
+            scaledLectureTimingsRef.current = scalePointTimingsToDuration(slideForSync.pointTimings, dur);
+            const syncFromTime = () => {
+              const tMs = a.currentTime * 1000;
+              const nextIdx = activePointIndexFromTimings(tMs, scaledLectureTimingsRef.current);
+              setNarrationBulletIndex((prev) => (prev === nextIdx ? prev : nextIdx));
+            };
+            a.ontimeupdate = () => {
+              narrationProgressRef.current[audioKey] = a.currentTime;
+              syncFromTime();
+            };
+            syncFromTime();
+          } else {
+            if (timingMode) {
+              lectureTimingModeRef.current = false;
+              setNarrationBulletIndex(null);
+            }
+            attachPlaybackSyncRaf(a, words, setNarrationSubtitleLine, {
+              segmentRanges,
+              setActiveSegment: setNarrationBulletIndex,
+            });
+            a.ontimeupdate = () => {
+              narrationProgressRef.current[audioKey] = a.currentTime;
+            };
+          }
         };
         if (a.readyState >= 1) {
           onReady();
@@ -1262,12 +1372,12 @@ export default function TutorPage() {
             onReady();
           };
         }
-        a.ontimeupdate = () => {
-          narrationProgressRef.current[audioKey] = a.currentTime;
-        };
         a.onended = () => {
           clearAudioHandlers();
           audioRoleRef.current = null;
+          lectureTimingModeRef.current = false;
+          clearLectureTypewriterInterval();
+          setLectureTypewriterText("");
           setPlayingSlide(null);
           setNarrationSubtitleLine("");
           setNarrationBulletIndex(null);
@@ -1293,6 +1403,9 @@ export default function TutorPage() {
     } catch (e) {
       clearAudioHandlers();
       audioRoleRef.current = null;
+      lectureTimingModeRef.current = false;
+      clearLectureTypewriterInterval();
+      setLectureTypewriterText("");
       setPlayingSlide(null);
       setNarrationSubtitleLine("");
       setNarrationBulletIndex(null);
@@ -1349,6 +1462,9 @@ export default function TutorPage() {
     setPlayingAnswer(false);
     setNarrationSubtitleLine("");
     setAnswerSubtitleLine("");
+    lectureTimingModeRef.current = false;
+    clearLectureTypewriterInterval();
+    setLectureTypewriterText("");
     setNarrationBulletIndex(null);
     setAnswerBulletIndex(null);
   }
@@ -1376,6 +1492,10 @@ export default function TutorPage() {
       clearAudioHandlers();
       setPlayingSlide(null);
       setNarrationSubtitleLine("");
+      lectureTimingModeRef.current = false;
+      clearLectureTypewriterInterval();
+      setLectureTypewriterText("");
+      setNarrationBulletIndex(null);
       const words = tokenizeScript(text);
       setPlayingAnswer(true);
       setAnswerPaused(false);
@@ -1443,6 +1563,10 @@ export default function TutorPage() {
 
     setPlayingSlide(null);
     setNarrationSubtitleLine("");
+    lectureTimingModeRef.current = false;
+    clearLectureTypewriterInterval();
+    setLectureTypewriterText("");
+    setNarrationBulletIndex(null);
     const words = tokenizeScript(text);
     setAnswerSubtitleLine("");
     lastAnswerTtsTextRef.current = text;
@@ -2254,26 +2378,55 @@ export default function TutorPage() {
                             {slide.title}
                           </h2>
                           <p className="text-xs text-muted-foreground">
-                            Bullets highlight in order as the tutor speaks—follow the glow to stay oriented.
+                            {Array.isArray(slide.pointTimings) &&
+                            slide.pointTimings.length === slide.points.length &&
+                            slide.points.length > 0
+                              ? "Bullets appear one by one, in sync with the voice—upcoming points stay hidden until spoken."
+                              : "Bullets highlight in order as the tutor speaks—follow the glow to stay oriented."}
                           </p>
                           <ul className="space-y-1.5 text-sm text-foreground/90">
-                            {slide.points.map((p, i) => (
-                              <li
-                                key={i}
-                                ref={(el) => {
-                                  lecturePointRefs.current[i] = el;
-                                }}
-                                className={cn(
-                                  "flex gap-2 rounded-xl border border-transparent py-1.5 pl-2 pr-2 transition-all duration-300",
-                                  "before:mt-1.5 before:size-1.5 before:shrink-0 before:rounded-full before:bg-primary/50 before:content-['']",
-                                  narrationBulletIndex === i && playingSlide === slideIndex
-                                    ? "border-primary/40 bg-primary/[0.12] shadow-md ring-2 ring-primary/30 before:bg-primary"
-                                    : "hover:bg-muted/40",
-                                )}
-                              >
-                                <span className="min-w-0 leading-snug">{p}</span>
-                              </li>
-                            ))}
+                            {(() => {
+                              const useSequentialBullets =
+                                tutorView === "lecture" &&
+                                playingSlide === slideIndex &&
+                                Array.isArray(slide.pointTimings) &&
+                                slide.pointTimings.length === slide.points.length &&
+                                slide.points.length > 0;
+                              return slide.points.map((p, i) => {
+                                if (
+                                  useSequentialBullets &&
+                                  narrationBulletIndex !== null &&
+                                  i > narrationBulletIndex
+                                ) {
+                                  return null;
+                                }
+                                const displayText =
+                                  useSequentialBullets &&
+                                  narrationBulletIndex !== null &&
+                                  i < narrationBulletIndex
+                                    ? p
+                                    : useSequentialBullets && narrationBulletIndex === i
+                                      ? lectureTypewriterText
+                                      : p;
+                                return (
+                                  <li
+                                    key={i}
+                                    ref={(el) => {
+                                      lecturePointRefs.current[i] = el;
+                                    }}
+                                    className={cn(
+                                      "flex gap-2 rounded-xl border border-transparent py-1.5 pl-2 pr-2 transition-all duration-300",
+                                      "before:mt-1.5 before:size-1.5 before:shrink-0 before:rounded-full before:bg-primary/50 before:content-['']",
+                                      narrationBulletIndex === i && playingSlide === slideIndex
+                                        ? "border-primary/40 bg-primary/[0.12] shadow-md ring-2 ring-primary/30 before:bg-primary"
+                                        : "hover:bg-muted/40",
+                                    )}
+                                  >
+                                    <span className="min-w-0 leading-snug">{displayText}</span>
+                                  </li>
+                                );
+                              });
+                            })()}
                           </ul>
                           <div className="space-y-2">
                             <div className="flex flex-wrap items-center justify-between gap-2">

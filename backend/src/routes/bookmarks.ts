@@ -10,6 +10,7 @@ import {
   type BookmarkChatTurn,
 } from "../services/gemini.js";
 import { tutorPyTts } from "../services/tutorPythonClient.js";
+import { isLlmConfigured } from "../services/llm/llmReady.js";
 
 const router = Router();
 const MAX_BOOKMARKS_PER_USER = 400;
@@ -208,8 +209,11 @@ router.post("/:id/recap/tts", authMiddleware, async (req: AuthedRequest, res: Re
     let scriptForTts = (b.recapScript ?? "").trim();
 
     if (!scriptForTts) {
-      if (!process.env.GEMINI_API_KEY) {
-        return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+      if (!isLlmConfigured()) {
+        return res.status(500).json({
+          error:
+            "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
+        });
       }
       const uploadDoc = await Upload.findOne({ _id: b.sourceUploadId, userId: req.userId }).lean<UploadDoc | null>();
       const material =
@@ -249,8 +253,11 @@ router.post("/:id/recap/tts", authMiddleware, async (req: AuthedRequest, res: Re
 });
 
 router.post("/:id/chat", authMiddleware, async (req: AuthedRequest, res: Response) => {
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+  if (!isLlmConfigured()) {
+    return res.status(500).json({
+      error:
+        "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
+    });
   }
 
   const id = req.params.id;

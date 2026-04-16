@@ -1,47 +1,17 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-/** Read env on each call — `.env` is applied in `index.ts` after imports, so module-level `process.env` would be stale. */
-function getModel() {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not configured");
-  }
-  const modelName = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
-  const genAI = new GoogleGenerativeAI(apiKey);
-  return genAI.getGenerativeModel({ model: modelName });
-}
+import {
+  completeLightPrompt,
+  completeStructuredPrompt,
+  completeTutorPrompt,
+  extractTextFromImage as extractTextFromImageRouter,
+  transcribeAudioBuffer,
+} from "./llm/router.js";
 
 export async function extractTextFromImage(buffer: Buffer, mimeType: string): Promise<string> {
-  const model = getModel();
-  const prompt =
-    "Extract all readable text from this image with maximum accuracy. If text is small, rotated, or low contrast, still try to read it. Return only plain text in English.";
-  const result = await model.generateContent([
-    { text: prompt },
-    {
-      inlineData: {
-        mimeType: mimeType || "image/png",
-        data: buffer.toString("base64"),
-      },
-    },
-  ]);
-  const text = result.response.text();
-  return text.trim();
+  return extractTextFromImageRouter(buffer, mimeType);
 }
 
 export async function transcribeAudio(buffer: Buffer, mimeType: string): Promise<string> {
-  const model = getModel();
-  const prompt =
-    "Transcribe this audio with high accuracy. Handle background noise and accents. Return only the clean transcription in English.";
-  const result = await model.generateContent([
-    { text: prompt },
-    {
-      inlineData: {
-        mimeType: mimeType || "audio/webm",
-        data: buffer.toString("base64"),
-      },
-    },
-  ]);
-  return result.response.text().trim();
+  return transcribeAudioBuffer(buffer, mimeType);
 }
 
 /**
@@ -51,9 +21,8 @@ export async function synthesizeLearningNotes(
   extractedText: string,
   userPrompt: string,
 ): Promise<string> {
-  const model = getModel();
   const instructions = userPrompt.trim() || "No extra instructions.";
-  const body = `You are Acadomi, an assistant for higher-education learners.
+  const prompt = `You are Acadomi, an assistant for higher-education learners.
 
 User instructions (prioritize these if they ask for something specific):
 ${instructions}
@@ -70,8 +39,7 @@ Produce a clear, professional response in markdown with:
 
 Keep tone academic but approachable. If the source is empty or unusable, say so briefly.`;
 
-  const result = await model.generateContent(body);
-  return result.response.text().trim();
+  return completeLightPrompt(prompt);
 }
 
 export type RoleReversalVisualHints = {
@@ -198,7 +166,6 @@ export async function evaluateRoleReversalTeaching(params: {
   referenceMaterial: string;
   studentTranscript: string;
 }): Promise<RoleReversalEvaluation> {
-  const model = getModel();
   const topic = params.topic.trim();
   const ref = params.referenceMaterial.trim().slice(0, 100_000);
   const student = params.studentTranscript.trim().slice(0, 50_000);
@@ -244,8 +211,7 @@ ${student}
 
 Be fair: reward correct ideas; note gaps vs reference. JSON only:`;
 
-  const result = await model.generateContent(prompt);
-  const rawText = result.response.text().trim();
+  const rawText = (await completeStructuredPrompt(prompt)).trim();
   let parsed: unknown;
   try {
     parsed = extractFirstJsonObject(rawText);
@@ -262,7 +228,120 @@ export type TutorSlideDraft = {
   title: string;
   points: string[];
   script: string;
+  pointTimings: { startMs: number; endMs: number }[];
 };
+
+function tokenizeScript(script: string): string[] {
+  return script.trim().split(/\s+/).filter(Boolean);
+}
+
+/** Map each word index to a bullet segment (script has no timestamps; split by bullet weight). */
+function wordRangesForBulletSync(script: string, points: string[]): { start: number; end: number }[] {
+  const n = tokenizeScript(script).length;
+  const k = points.length;
+  if (n === 0) return [];
+  if (k === 0) return [{ start: 0, end: n }];
+  const weights = points.map((p) => Math.max(1, tokenizeScript(p).length));
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const sizes = weights.map((w) => Math.max(1, Math.floor((n * w) / sum)));
+  let total = sizes.reduce((a, b) => a + b, 0);
+  let diff = n - total;
+  let i = 0;
+  while (diff !== 0 && sizes.length) {
+    const idx = i % sizes.length;
+    if (diff > 0) {
+      sizes[idx]++;
+      diff--;
+    } else if (sizes[idx] > 1) {
+      sizes[idx]--;
+      diff++;
+    }
+    i++;
+    if (i > sizes.length * (n + 8)) break;
+  }
+  if (diff !== 0) {
+    const base = Math.floor(n / k);
+    let rem = n % k;
+    const rangesEq: { start: number; end: number }[] = [];
+    let s = 0;
+    for (let j = 0; j < k; j++) {
+      const len = base + (rem > 0 ? 1 : 0);
+      if (rem > 0) rem--;
+      rangesEq.push({ start: s, end: s + len });
+      s += len;
+    }
+    return rangesEq;
+  }
+  const ranges: { start: number; end: number }[] = [];
+  let start = 0;
+  for (const sz of sizes) {
+    ranges.push({ start, end: start + sz });
+    start += sz;
+  }
+  if (ranges.length && ranges[ranges.length - 1].end !== n) {
+    ranges[ranges.length - 1].end = n;
+  }
+  return ranges;
+}
+
+function fallbackPointTimings(script: string, points: string[]): { startMs: number; endMs: number }[] {
+  const words = tokenizeScript(script);
+  const n = words.length;
+  const ranges = wordRangesForBulletSync(script, points);
+  const totalMs = Math.max(8000, Math.min(180_000, Math.max(n, 1) * 320));
+  const scale = totalMs / Math.max(n, 1);
+  const raw = ranges.map((r) => ({
+    startMs: Math.round(r.start * scale),
+    endMs: Math.round(r.end * scale),
+  }));
+  if (raw.length === 0) return [];
+  raw[raw.length - 1].endMs = totalMs;
+  return raw;
+}
+
+function coerceTimingMs(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const x = Number(v);
+    if (Number.isFinite(x)) return x;
+  }
+  return null;
+}
+
+function normalizePointTimings(
+  raw: unknown,
+  pointsLen: number,
+  script: string,
+  points: string[],
+): { startMs: number; endMs: number }[] {
+  if (!Array.isArray(raw) || raw.length !== pointsLen) {
+    return fallbackPointTimings(script, points);
+  }
+  const out: { startMs: number; endMs: number }[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") {
+      return fallbackPointTimings(script, points);
+    }
+    const o = row as Record<string, unknown>;
+    const startMs = coerceTimingMs(o.startMs ?? o.start_ms);
+    const endMs = coerceTimingMs(o.endMs ?? o.end_ms);
+    if (startMs === null || endMs === null || endMs < startMs) {
+      return fallbackPointTimings(script, points);
+    }
+    out.push({ startMs, endMs });
+  }
+  for (let i = 1; i < out.length; i++) {
+    if (out[i].startMs < out[i - 1].startMs) {
+      out[i].startMs = out[i - 1].startMs;
+    }
+    if (out[i].endMs < out[i].startMs) {
+      out[i].endMs = out[i].startMs + 1;
+    }
+  }
+  const lastEnd = out[out.length - 1]?.endMs ?? 0;
+  if (lastEnd <= 0) return fallbackPointTimings(script, points);
+  return out;
+}
 
 function normalizeTutorSlides(raw: unknown): TutorSlideDraft[] {
   if (!Array.isArray(raw)) {
@@ -279,7 +358,9 @@ function normalizeTutorSlides(raw: unknown): TutorSlideDraft[] {
       ? pointsRaw.map((p) => str(p).trim()).filter((p) => p.length > 0)
       : [];
     if (!title || !script || points.length === 0) continue;
-    out.push({ title, points, script });
+    const timingsRaw = o.pointTimings ?? o.point_timings;
+    const pointTimings = normalizePointTimings(timingsRaw, points.length, script, points);
+    out.push({ title, points, script, pointTimings });
   }
   if (out.length < 3) {
     throw new Error("Model returned too few valid slides (need at least 3).");
@@ -291,13 +372,12 @@ function normalizeTutorSlides(raw: unknown): TutorSlideDraft[] {
 }
 
 /**
- * Build slide deck + per-slide spoken scripts for the Meet-style AI tutor (Gemini only).
+ * Build slide deck + per-slide spoken scripts for the Meet-style AI tutor (Llama 2 via Ollama when LLM_BACKEND=ollama).
  */
 export async function generateTutorSlidesAndScripts(
   material: string,
   topicFocus?: string,
 ): Promise<TutorSlideDraft[]> {
-  const model = getModel();
   const focus = topicFocus?.trim()
     ? `Learner focus / topic to emphasize (still cover the rest at a high level):\n${topicFocus.trim()}\n\n`
     : "";
@@ -310,15 +390,16 @@ ${material.trim().slice(0, 100_000)}
 ---
 
 Output ONLY valid JSON (no markdown fences, no commentary) with exactly this shape:
-{"slides":[{"title":"string","points":["string"],"script":"string"}]}
+{"slides":[{"title":"string","points":["string"],"script":"string","pointTimings":[{"startMs":0,"endMs":12000}]}]}
 
 Rules:
 - Produce 6–14 slides in logical teaching order (intro → concepts → recap).
 - Bullets are concise; the script expands and teaches them.
-- Stay faithful to the material; do not invent facts not supported by the text.`;
+- Stay faithful to the material; do not invent facts not supported by the text.
+- For each slide, "pointTimings" MUST have the SAME length as "points". Each entry covers when that bullet is the main focus in the spoken script.
+- Use startMs/endMs on a RELATIVE millisecond timeline for that slide (not real TTS length). The first bullet should start at 0. The last bullet's endMs should be the total "virtual" duration (e.g. 20000–90000). Space timings so they match how much of the script discusses each bullet (longer explanations → longer intervals). Keep intervals contiguous or slightly overlapping is OK.`;
 
-  const result = await model.generateContent(body);
-  const rawText = result.response.text().trim();
+  const rawText = (await completeTutorPrompt(body)).trim();
   let parsed: unknown;
   try {
     parsed = extractFirstJsonObject(rawText);
@@ -333,7 +414,7 @@ Rules:
 }
 
 /**
- * Short spoken-style answer during the session (Gemini only).
+ * Short spoken-style answer during the session (Llama 2 when using Ollama for tutor).
  */
 export async function answerTutorQuestion(params: {
   question: string;
@@ -342,7 +423,6 @@ export async function answerTutorQuestion(params: {
   slideScript: string;
   materialExcerpt: string;
 }): Promise<string> {
-  const model = getModel();
   const q = params.question.trim().slice(0, 8000);
   const body = `You are a live tutor in a video-style session. The student asked a question during this slide.
 Answer clearly in 2–6 short sentences. No markdown headings. If the question is unclear, ask one brief clarifying question.
@@ -358,12 +438,11 @@ ${params.materialExcerpt.trim().slice(0, 24_000)}
 
 Student question: ${q}`;
 
-  const result = await model.generateContent(body);
-  return result.response.text().trim();
+  return (await completeTutorPrompt(body)).trim();
 }
 
 /**
- * One-slide "explain like I'm five" spoken script (Gemini only). Same facts, simpler words.
+ * One-slide "explain like I'm five" spoken script. Same facts, simpler words.
  */
 export async function generateTutorSlideEli5Script(params: {
   slideTitle: string;
@@ -371,7 +450,6 @@ export async function generateTutorSlideEli5Script(params: {
   slideScript: string;
   materialExcerpt: string;
 }): Promise<string> {
-  const model = getModel();
   const body = `The learner pressed "Explain like I'm five" for ONE slide. Write a single script the tutor will read aloud.
 Rules:
 - Use very simple words and short sentences (like talking to a bright 5-year-old). Stay warm, not babyish to an adult.
@@ -389,8 +467,7 @@ Reference material (for accuracy only):
 ${params.materialExcerpt.trim().slice(0, 14_000)}
 ---`;
 
-  const result = await model.generateContent(body);
-  return result.response.text().trim().slice(0, 6000);
+  return (await completeTutorPrompt(body)).trim().slice(0, 6000);
 }
 
 function stripOuterMarkdownFence(text: string): string {
@@ -407,7 +484,6 @@ export async function generateSmartCheatSheetMarkdown(
   material: string,
   topic: string,
 ): Promise<string> {
-  const model = getModel();
   const excerpt = material.trim().slice(0, 100_000);
   const focus = topic.trim().slice(0, 500);
 
@@ -433,8 +509,7 @@ Strict output rules (follow all):
 
 Output **only** valid Markdown for the cheat sheet. No preamble, no closing commentary, no code fences wrapping the whole document.`;
 
-  const result = await model.generateContent(body);
-  const raw = result.response.text().trim();
+  const raw = (await completeStructuredPrompt(body)).trim();
   return stripOuterMarkdownFence(raw).trim().slice(0, 120_000);
 }
 
@@ -446,7 +521,6 @@ export async function generateBookmarkRecapScript(params: {
   materialExcerpt: string;
   slideTitle?: string;
 }): Promise<string> {
-  const model = getModel();
   const slide = params.slideTitle?.trim() ? `Slide context: ${params.slideTitle.trim().slice(0, 200)}\n` : "";
   const body = `You are Acadomi. The learner bookmarked this passage from their AI tutor:
 "${params.bookmarkLine.trim().slice(0, 14_000)}"
@@ -463,8 +537,7 @@ Write a **short audio recap** they can listen to (about 55–130 words). Rules:
 
 Output ONLY the spoken script, nothing else.`;
 
-  const result = await model.generateContent(body);
-  return result.response.text().trim().slice(0, 4000);
+  return (await completeLightPrompt(body)).trim().slice(0, 4000);
 }
 
 export type BookmarkChatTurn = { role: "user" | "assistant"; content: string };
@@ -478,7 +551,6 @@ export async function answerBookmarkQuestion(params: {
   message: string;
   history: BookmarkChatTurn[];
 }): Promise<string> {
-  const model = getModel();
   const hist = params.history
     .slice(-8)
     .map((t) => `${t.role === "user" ? "Learner" : "Tutor"}: ${t.content}`)
@@ -499,6 +571,5 @@ ${params.message.trim().slice(0, 4000)}
 
 Reply with a clear, helpful answer (markdown allowed for formulas/code if needed). Stay grounded in the material; if the question goes beyond it, say what you can infer and what is unknown. Keep it focused — roughly 80–350 words unless they ask for depth.`;
 
-  const result = await model.generateContent(body);
-  return result.response.text().trim().slice(0, 12_000);
+  return (await completeLightPrompt(body)).trim().slice(0, 12_000);
 }

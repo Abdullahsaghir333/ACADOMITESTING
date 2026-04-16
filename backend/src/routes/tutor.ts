@@ -11,6 +11,7 @@ import {
   generateTutorSlidesAndScripts,
   transcribeAudio,
 } from "../services/gemini.js";
+import { hasGeminiForTranscription, isLlmConfigured } from "../services/llm/llmReady.js";
 import { tutorPyBase, tutorPyTts } from "../services/tutorPythonClient.js";
 
 const router = Router();
@@ -63,6 +64,7 @@ function serializeSession(s: TutorSessionLean) {
       title: sl.title,
       points: sl.points,
       script: sl.script,
+      pointTimings: sl.pointTimings ?? [],
     })),
     status: s.status,
     errorMessage: s.errorMessage,
@@ -102,8 +104,11 @@ router.get("/sessions/:id", authMiddleware, async (req: AuthedRequest, res: Resp
 });
 
 router.post("/sessions", authMiddleware, async (req: AuthedRequest, res: Response) => {
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+  if (!isLlmConfigured()) {
+    return res.status(500).json({
+      error:
+        "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
+    });
   }
 
   const uploadId = typeof req.body?.uploadId === "string" ? req.body.uploadId.trim() : "";
@@ -175,7 +180,7 @@ router.delete("/sessions/:id", authMiddleware, async (req: AuthedRequest, res: R
   }
 });
 
-/** Plain text → MP3 (gTTS via Python). For slide narration or short answer playback. */
+/** Plain text → MP3 (Edge TTS via Python). For slide narration or short answer playback. */
 router.post("/tts", authMiddleware, async (req: AuthedRequest, res: Response) => {
   const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
   if (!text || text.length > 6000) {
@@ -266,8 +271,11 @@ router.post(
         return res.json({ script: slide.eli5Script.trim() });
       }
 
-      if (!process.env.GEMINI_API_KEY) {
-        return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+      if (!isLlmConfigured()) {
+        return res.status(500).json({
+          error:
+            "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
+        });
       }
 
       const uploadDoc = await Upload.findOne({ _id: s.sourceUploadId, userId: req.userId }).lean<
@@ -338,8 +346,17 @@ router.post(
   authMiddleware,
   upload.single("audio"),
   async (req: AuthedRequest, res: Response) => {
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+    if (!hasGeminiForTranscription()) {
+      return res.status(500).json({
+        error:
+          "Speech transcription requires GEMINI_API_KEY on the server (used for audio→text). Text chat uses Ollama when LLM_BACKEND=ollama.",
+      });
+    }
+    if (!isLlmConfigured()) {
+      return res.status(500).json({
+        error:
+          "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
+      });
     }
 
     const id = req.params.id;

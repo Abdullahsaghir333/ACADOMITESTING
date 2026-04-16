@@ -19,6 +19,7 @@ import tutorRoutes from "./routes/tutor.js";
 import uploadRoutes from "./routes/uploads.js";
 import { registerTutorGroupSocket } from "./socket/registerTutorGroupSocket.js";
 import { setSocketIo } from "./socket/socketRegistry.js";
+import { getLlmBackend } from "./services/llm/config.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,6 +52,7 @@ app.get("/health", (_req, res) => {
     status: "ok",
     service: "acadomi-api",
     database: db,
+    llmBackend: getLlmBackend(),
     gemini: process.env.GEMINI_API_KEY ? "configured" : "missing",
     jwt: process.env.JWT_SECRET ? "configured" : "missing",
     podcastService: process.env.PODCAST_SERVICE_URL ?? "http://127.0.0.1:5001",

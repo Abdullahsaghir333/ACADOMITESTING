@@ -556,10 +556,14 @@ export async function apiListFriends(token: string): Promise<{ friends: FriendEn
   return parseJson(res);
 }
 
+export type TutorPointTimingDTO = { startMs: number; endMs: number };
+
 export type TutorSlideDTO = {
   title: string;
   points: string[];
   script: string;
+  /** Same length as points when present; scaled client-side to real audio duration. */
+  pointTimings?: TutorPointTimingDTO[];
 };
 
 export type TutorSessionDTO = {

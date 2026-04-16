@@ -7,15 +7,16 @@ AI-powered personalized learning platform (Final Year Project). Monorepo layout 
 | Path | Role |
 |------|------|
 | `frontend/` | Next.js (App Router, Tailwind v4) — UI |
-| `backend/` | Express + MongoDB + **Google Gemini** (uploads & auth) |
+| `backend/` | Express + MongoDB + **Gemini and/or local Ollama** (see `LLM_BACKEND` in `backend/.env`) |
 | `python/services/podcast/` | Flask microservice: Gemini dialogue script + gTTS audio (port 5001) |
-| `python/services/tutor/` | FastAPI: gTTS narration + MediaPipe webcam focus (port 5002) |
+| `python/services/tutor/` | FastAPI: Edge TTS narration + MediaPipe webcam focus (port 5002) |
 
 ## Prerequisites
 
 - **Node.js** 20+ (see `.nvmrc`)
 - **MongoDB Atlas** (or local Mongo via Docker Compose)
-- **Google AI Studio** API key for Gemini (`GEMINI_API_KEY` in `backend/.env`)
+- **Google AI Studio** API key for Gemini **if** you use Gemini for text/audio, or for podcast generation (`GEMINI_API_KEY` in `backend/.env`)
+- **Optional:** [Ollama](https://ollama.com/) for local models — e.g. `LLM_BACKEND=ollama`, pull `llama2`, `phi3`, `phi3:mini`; tutor flows use **`OLLAMA_MODEL_TUTOR` (default `llama2`)**, lighter tasks use **`OLLAMA_MODEL_LIGHT`** / **`OLLAMA_MODEL_STRUCTURED`**. Image OCR can use **Tesseract** offline (`IMAGE_TEXT_BACKEND=tesseract`, default when `LLM_BACKEND=ollama`).
 
 ## Environment (backend)
 
@@ -25,8 +26,11 @@ Copy `backend/.env.example` to `backend/.env` and set:
 |----------|---------|
 | `MONGODB_URI` | MongoDB connection string |
 | `JWT_SECRET` | Long random string for signing login tokens |
-| `GEMINI_API_KEY` | Gemini API key (server-only) |
+| `GEMINI_API_KEY` | Gemini API key when using cloud LLM or audio transcription / podcasts |
 | `FRONTEND_URL` | Next.js origin for CORS (e.g. `http://localhost:3000`) |
+| `LLM_BACKEND` | `gemini` (default) or `ollama` for local Llama 2 / Phi routing |
+| `OLLAMA_HOST`, `OLLAMA_MODEL_*` | See `backend/.env.example` — tutor = Llama 2 by default |
+| `IMAGE_TEXT_BACKEND` | `tesseract` \| `ollama` \| `gemini` for image text extraction |
 | `GEMINI_MODEL` | Optional; defaults to `gemini-2.5-flash` |
 | `PODCAST_SERVICE_URL` | Base URL of the Python podcast API (default `http://127.0.0.1:5001`) |
 | `TUTOR_SERVICE_URL` | Base URL of the Python tutor API (default `http://127.0.0.1:5002`) |
@@ -98,7 +102,7 @@ From the repo root (after `.venv` exists): `npm run dev:tutor`. Set `TUTOR_SERVI
 - **Auth:** Register, login (JWT in `localStorage`), profile & password on **Settings**.
 - **Uploads (max 7 per user):** PDF (text via `pdf-parse`), images & audio via **Gemini**; optional prompt; stored extracted text + Gemini “processed notes” in MongoDB.
 - **Podcast mode:** Pick a **completed** upload; backend calls the Python service (Gemini script + gTTS), stores **MP3 in MongoDB GridFS**, lists **Your podcasts** with replay and delete.
-- **AI tutor (Meet-style):** Completed upload → slides + spoken narration + optional webcam focus; live Q&A via Gemini on the Node API; Python service handles TTS and focus frames (`TUTOR_SERVICE_URL`).
+- **AI tutor (Meet-style):** Completed upload → slides + spoken narration + optional webcam focus; live Q&A via Gemini on the Node API; Python service handles Edge TTS (Microsoft neural voice via `edge-tts`, default `en-US-ChristopherNeural`) and focus frames (`TUTOR_SERVICE_URL`). Optional env: `EDGE_TTS_VOICE` in the tutor service.
 - **Role reversal teaching:** Pick a topic + **completed** upload, **record** your explanation; Gemini transcribes, compares to your material, returns **scores + radar/bar charts + feedback**; saved in MongoDB; **Improve** re-records and updates the same session.
 - **Navigation:** Dashboard, Uploads, Podcast mode, Settings, and platform roadmap links.
 
