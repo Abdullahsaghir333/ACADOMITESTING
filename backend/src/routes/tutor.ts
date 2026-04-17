@@ -1,3 +1,15 @@
+/**
+ * AI tutor HTTP routes. Session generation & ELI5 use **Llama 2** (`completeTutorPrompt`);
+ * mic Q&A: **Gemini** transcription only; answers use **Llama 2** (Ollama) — see `llm/router.ts`.
+ *
+ * Model call sites in this file:
+ * | Line(s) | Model    | `gemini.ts` → `llm/router.ts` |
+ * |---------|----------|-------------------------------|
+ * | 148     | Llama 2  | `generateTutorSlidesAndScripts` → L423 `completeTutorPrompt` (`router` L30) |
+ * | 287     | Llama 2  | `generateTutorSlideEli5Script` → L491 `completeTutorPrompt` (`router` L30) |
+ * | 390     | Gemini   | `transcribeAudio` → `transcribeAudioBuffer` (`router` L70) |
+ * | 395     | Llama 2  | `answerTutorQuestion` → L462 `completeTutorPrompt` (`router` L30) |
+ */
 import { Router, type Response } from "express";
 import mongoose from "mongoose";
 import multer from "multer";
@@ -11,7 +23,7 @@ import {
   generateTutorSlidesAndScripts,
   transcribeAudio,
 } from "../services/gemini.js";
-import { hasGeminiForTranscription, isLlmConfigured } from "../services/llm/llmReady.js";
+import { hasGeminiApiKey } from "../services/llm/llmReady.js";
 import { tutorPyBase, tutorPyTts } from "../services/tutorPythonClient.js";
 
 const router = Router();
@@ -104,13 +116,6 @@ router.get("/sessions/:id", authMiddleware, async (req: AuthedRequest, res: Resp
 });
 
 router.post("/sessions", authMiddleware, async (req: AuthedRequest, res: Response) => {
-  if (!isLlmConfigured()) {
-    return res.status(500).json({
-      error:
-        "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
-    });
-  }
-
   const uploadId = typeof req.body?.uploadId === "string" ? req.body.uploadId.trim() : "";
   const topicFocus = typeof req.body?.topicFocus === "string" ? req.body.topicFocus.trim().slice(0, 400) : "";
 
@@ -271,13 +276,6 @@ router.post(
         return res.json({ script: slide.eli5Script.trim() });
       }
 
-      if (!isLlmConfigured()) {
-        return res.status(500).json({
-          error:
-            "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
-        });
-      }
-
       const uploadDoc = await Upload.findOne({ _id: s.sourceUploadId, userId: req.userId }).lean<
         UploadDoc | null
       >();
@@ -346,16 +344,10 @@ router.post(
   authMiddleware,
   upload.single("audio"),
   async (req: AuthedRequest, res: Response) => {
-    if (!hasGeminiForTranscription()) {
+    if (!hasGeminiApiKey()) {
       return res.status(500).json({
         error:
-          "Speech transcription requires GEMINI_API_KEY on the server (used for audio→text). Text chat uses Ollama when LLM_BACKEND=ollama.",
-      });
-    }
-    if (!isLlmConfigured()) {
-      return res.status(500).json({
-        error:
-          "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
+          "Speech transcription requires GEMINI_API_KEY (Gemini). Answers use Llama 2 via Ollama — ensure Ollama is running.",
       });
     }
 

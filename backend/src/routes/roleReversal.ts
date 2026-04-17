@@ -1,3 +1,11 @@
+/**
+ * Role reversal: **Gemini** transcription; evaluation → **Phi-3** (Ollama) via `completeStructuredPrompt`.
+ *
+ * | Line(s) | Model    | `gemini.ts` → `llm/router.ts` |
+ * |---------|----------|-------------------------------|
+ * | 97      | Gemini   | `transcribeAudio` → `transcribeAudioBuffer` L70 |
+ * | 104     | Phi-3    | `evaluateRoleReversalTeaching` → L235 `completeStructuredPrompt` L44 |
+ */
 import { Router, type Response } from "express";
 import mongoose from "mongoose";
 import multer from "multer";
@@ -6,7 +14,7 @@ import { RoleReversalSession } from "../models/RoleReversalSession.js";
 import { Upload } from "../models/Upload.js";
 import { authMiddleware, type AuthedRequest } from "../middleware/auth.js";
 import { evaluateRoleReversalTeaching, transcribeAudio } from "../services/gemini.js";
-import { hasGeminiForTranscription, isLlmConfigured } from "../services/llm/llmReady.js";
+import { hasGeminiApiKey } from "../services/llm/llmReady.js";
 
 const router = Router();
 const MAX_SESSIONS_PER_USER = 30;
@@ -45,16 +53,10 @@ router.post(
   authMiddleware,
   upload.single("audio"),
   async (req: AuthedRequest, res: Response) => {
-    if (!hasGeminiForTranscription()) {
+    if (!hasGeminiApiKey()) {
       return res.status(500).json({
         error:
-          "Speech transcription requires GEMINI_API_KEY (audio→text). Evaluation can use Ollama when LLM_BACKEND=ollama.",
-      });
-    }
-    if (!isLlmConfigured()) {
-      return res.status(500).json({
-        error:
-          "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
+          "Speech transcription requires GEMINI_API_KEY (Gemini). Evaluation uses Phi-3 via Ollama — ensure Ollama is running.",
       });
     }
 

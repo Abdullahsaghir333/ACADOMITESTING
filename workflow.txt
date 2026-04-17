@@ -1,0 +1,445 @@
+================================================================================
+              ACADOMI — FEATURE WORKFLOW DIAGRAMS (for image generation)
+================================================================================
+
+Use each section below as the content/layout guide for generating a workflow
+diagram image in the same visual style as the Role Reversal diagram (clean
+boxes, labeled arrows, icons for user/API/model/UI, left-to-right flow).
+
+NOTE:  Gemini API is used ONLY for text extraction & audio transcription.
+       All inference / generation tasks use local Ollama models:
+         • Llama 2         → Tutor slides, Q&A, ELI5
+         • Phi-3           → Role-reversal eval, Cheat sheets
+         • Phi-3 Mini      → Study notes, Bookmarks, Recap
+         • LLaVA           → Image text extraction (vision)
+       TTS is handled by Edge TTS (tutor) and gTTS (podcast).
+       Focus monitoring uses MediaPipe FaceMesh (computer vision).
+
+
+================================================================================
+  WORKFLOW 1:  THE 'ACADOMI AI TUTORING' APPLICATION
+================================================================================
+
+DIAGRAM TITLE:  The 'Acadomi AI Tutoring' Application
+
+FLOW:
+
+  [Student Icon]
+      |
+      |--- uploads ---> [PDF/TXT/Image Icon]
+      |                     Reference Notes/PDF Upload
+      |                         |
+      |                         v
+      |                  ┌─────────────────────┐
+      |                  │    Gemini API        │
+      |                  │  (Text Extraction)   │
+      |                  └─────────────────────┘
+      |                         |
+      |                         v
+      |                  [Document Icon]
+      |                   Extracted Text
+      |                         |
+      |                         v
+      |                  ┌─────────────────────────┐
+      |                  │  Ollama Model            │
+      |                  │  (Llama 2) -             │
+      |                  │  Slide & Script Gen.     │
+      |                  │                          │
+      |                  │  • Prompt Generation     │
+      |                  │  • Inference             │
+      |                  │  • JSON Formatting       │
+      |                  └─────────────────────────┘
+      |                         |
+      |                         v
+      |                     [JSON Icon]
+      |                    JSON Output
+      |                  (6–14 Slides)
+      |                         |
+      |                         v
+      |                  ┌─────────────────────┐
+      |                  │   Edge TTS (Python)  │
+      |                  │ Microsoft Neural TTS │
+      |                  │                      │
+      |                  │  Script → Audio MP3  │
+      |                  └─────────────────────┘
+      |                         |
+      |                         v
+      |                  ┌──────────────────────────────┐
+      |                  │    Session UI - AI Tutor      │
+      |                  │                               │
+      |                  │  Slide Title & Bullet Points  │
+      |                  │  Synced Audio Narration       │
+      |                  │  ELI5 (Explain Like I'm 5)    │
+      |                  │  Focus Monitor Ring           │
+      |                  │  Bookmark Subtitles           │
+      |                  └──────────────────────────────┘
+      |                         |
+      |  (Student asks a question via mic)
+      |                         |
+      v                         v
+  [Mic Icon]             ┌─────────────────────┐
+  Audio Input            │    Gemini API        │
+      |                  │  (Transcription)     │
+      |                  └─────────────────────┘
+      |                         |
+      v                         v
+  [Document Icon]        ┌─────────────────────────┐
+  Student Question       │  Ollama Model            │
+  (Transcribed)          │  (Llama 2) -             │
+                         │  Q&A Answering            │
+                         │                          │
+                         │  • Slide Context         │
+                         │  • Reference Material    │
+                         │  • Inference             │
+                         └─────────────────────────┘
+                                |
+                                v
+                         [Document Icon]
+                         Answer Text
+                                |
+                                v
+                         ┌─────────────────────┐
+                         │   Edge TTS (Python)  │
+                         │   Answer → Audio     │
+                         └─────────────────────┘
+                                |
+                                v
+                         ┌──────────────────────────────┐
+                         │    Session UI - Q&A Response   │
+                         │                                │
+                         │  Spoken Answer (Audio)         │
+                         │  Answer Text (Subtitle)        │
+                         └──────────────────────────────┘
+
+
+NODES SUMMARY (for diagram boxes):
+  1. Student (icon: person)
+  2. Reference Notes/PDF Upload (icon: PDF/TXT files)
+  3. Gemini API – Text Extraction (icon: sparkle/AI)
+  4. Extracted Text (icon: document)
+  5. Ollama Model (Llama 2) – Slide & Script Generation (icon: brain/gear, sub-items: Prompt Generation, Inference, JSON Formatting)
+  6. JSON Output – 6–14 Slides (icon: JSON braces)
+  7. Edge TTS – Microsoft Neural TTS (icon: speaker/audio, sub-item: Script → Audio MP3)
+  8. Session UI – AI Tutor (icon: monitor/dashboard, sub-items: Slide Title & Bullet Points, Synced Audio Narration, ELI5, Focus Monitor Ring, Bookmark Subtitles)
+  9. Audio Input via Mic (icon: microphone)
+  10. Gemini API – Transcription (icon: sparkle/AI)
+  11. Ollama Model (Llama 2) – Q&A Answering (icon: brain/gear, sub-items: Slide Context, Reference Material, Inference)
+  12. Edge TTS – Answer → Audio (icon: speaker/audio)
+  13. Session UI – Q&A Response (icon: monitor, sub-items: Spoken Answer, Answer Text)
+
+ARROW LABELS:
+  Student → PDF Upload:           "uploads"
+  PDF Upload → Gemini Extract:    (arrow)
+  Gemini Extract → Extracted Text:(arrow)
+  Extracted Text → Llama 2:       (arrow)
+  Llama 2 → JSON Output:         (arrow)
+  JSON Output → Edge TTS:         (arrow)
+  Edge TTS → Session UI:          (arrow)
+  Student → Mic:                  "asks question"
+  Mic → Gemini Transcription:     (arrow)
+  Gemini Transcription → Llama 2: "Student Question"
+  Llama 2 Q&A → Edge TTS:        "Answer Text"
+  Edge TTS Answer → Q&A UI:       (arrow)
+
+
+================================================================================
+  WORKFLOW 2:  THE 'ACADOMI GROUP LEARNING' APPLICATION
+================================================================================
+
+DIAGRAM TITLE:  The 'Acadomi Group Learning' Application
+
+FLOW:
+
+  [Host Student Icon]
+      |
+      |--- selects existing ---> [Tutor Session Icon]
+      |    tutor session          Existing AI Tutor Session
+      |                           (Pre-generated Slides)
+      |                                |
+      |                                v
+      |                         ┌─────────────────────┐
+      |                         │   Invite Friends     │
+      |                         │   (1–3 Friends)      │
+      |                         │                      │
+      |                         │  Friend List from DB │
+      |                         │  Socket.IO Invite    │
+      |                         └─────────────────────┘
+      |                                |
+      |                                v
+  [Friend Icons x3]            ┌─────────────────────┐
+  Invited Friends              │   Accept / Decline   │
+      |                        │   (Gathering Phase)  │
+      |                        └─────────────────────┘
+      |                                |
+      |         (All friends accept)   |
+      |                                v
+      |                         ┌─────────────────────┐
+      |                         │  Group Session LIVE  │
+      |                         │  (Status: "live")    │
+      |                         └─────────────────────┘
+      |                                |
+      |                                v
+      |                         ┌──────────────────────────────┐
+      |                         │  Shared Session UI            │
+      |                         │                               │
+      |                         │  Same Slides (synced)         │
+      |                         │  Group Chat (Socket.IO)       │
+      |                         │  Shared Audio Narration       │
+      |                         └──────────────────────────────┘
+      |                                |
+      |  (Any member asks a question)  |
+      |                                v
+  [Mic Icon]                    ┌─────────────────────┐
+  Audio Input                   │    Gemini API        │
+  (from any member)             │  (Transcription)     │
+      |                         └─────────────────────┘
+      |                                |
+      v                                v
+  [Document Icon]               ┌─────────────────────────┐
+  Student Question              │  Ollama Model            │
+  (Transcribed)                 │  (Llama 2) -             │
+                                │  Q&A Answering            │
+                                │                          │
+                                │  • Slide Context         │
+                                │  • Reference Material    │
+                                │  • Inference             │
+                                └─────────────────────────┘
+                                       |
+                                       v
+                                ┌─────────────────────┐
+                                │   Edge TTS (Python)  │
+                                │   Answer → Audio     │
+                                └─────────────────────┘
+                                       |
+                                       v
+                                ┌──────────────────────────────┐
+                                │  Broadcast to All Members     │
+                                │  via Socket.IO (group:qa)     │
+                                │                               │
+                                │  Asker Name + Question        │
+                                │  AI Answer (Text + Audio)     │
+                                └──────────────────────────────┘
+
+
+NODES SUMMARY (for diagram boxes):
+  1. Host Student (icon: person with crown/star)
+  2. Existing AI Tutor Session (icon: slides/presentation)
+  3. Invite Friends – 1–3 Friends (icon: group/people, sub-items: Friend List from DB, Socket.IO Invite)
+  4. Invited Friends (icon: 3 person silhouettes)
+  5. Accept / Decline – Gathering Phase (icon: checkmark/cross)
+  6. Group Session LIVE (icon: live badge)
+  7. Shared Session UI (icon: monitor/dashboard, sub-items: Same Slides synced, Group Chat Socket.IO, Shared Audio Narration)
+  8. Audio Input from any member (icon: microphone)
+  9. Gemini API – Transcription (icon: sparkle/AI)
+  10. Ollama Model (Llama 2) – Q&A Answering (icon: brain/gear, sub-items: Slide Context, Reference Material, Inference)
+  11. Edge TTS – Answer → Audio (icon: speaker/audio)
+  12. Broadcast to All Members via Socket.IO (icon: broadcast/wifi, sub-items: Asker Name + Question, AI Answer Text + Audio)
+
+ARROW LABELS:
+  Host → Tutor Session:          "selects existing session"
+  Tutor Session → Invite:        (arrow)
+  Invite → Friends:              "Socket.IO notification"
+  Friends → Accept/Decline:      (arrow)
+  Accept → Live:                 "all friends accept"
+  Live → Shared UI:              (arrow)
+  Any Member → Mic:              "asks question"
+  Mic → Gemini Transcription:    (arrow)
+  Gemini Transcription → Llama 2:"Student Question"
+  Llama 2 → Edge TTS:            "Answer Text"
+  Edge TTS → Broadcast:          (arrow)
+
+
+================================================================================
+  WORKFLOW 3:  THE 'ACADOMI CHEAT SHEET' GENERATION
+================================================================================
+
+DIAGRAM TITLE:  The 'Acadomi Cheat Sheet' Generation
+
+FLOW:
+
+  [Student Icon]
+      |
+      |--- selects ---> [Upload Icon]
+      |                  Completed Upload
+      |                  (PDF/Image/Audio already processed)
+      |                         |
+      |                         v
+      |                  [Document Icon]
+      |                  Extracted Text +
+      |                  Processed Content
+      |                         |
+      |--- enters ---> [Text Input Icon]
+      |                 Topic / Focus Area
+      |                 (e.g. "Sorting Algorithms")
+      |                         |
+      |                         v
+      |                  ┌─────────────────────────┐
+      |                  │  Ollama Model            │
+      |                  │  (Phi-3) -               │
+      |                  │  Cheat Sheet Generation   │
+      |                  │                          │
+      |                  │  • Prompt Generation     │
+      |                  │  • Inference             │
+      |                  │  • Markdown Output       │
+      |                  └─────────────────────────┘
+      |                         |
+      |                         v
+      |                  [Document Icon]
+      |                  Markdown Output
+      |                  (Structured Cheat Sheet)
+      |                         |
+      |                         v
+      |                  ┌──────────────────────────────┐
+      |                  │  Cheat Sheet UI               │
+      |                  │                               │
+      |                  │  Bold Section Headers         │
+      |                  │  Comparison Tables            │
+      |                  │  Real-World Examples          │
+      |                  │  Quick-Reference Formulas     │
+      |                  │  Troubleshooting Tips         │
+      |                  └──────────────────────────────┘
+
+
+NODES SUMMARY (for diagram boxes):
+  1. Student (icon: person)
+  2. Completed Upload (icon: file/document with checkmark)
+  3. Extracted Text + Processed Content (icon: document)
+  4. Topic / Focus Area – Text Input (icon: keyboard/text field)
+  5. Ollama Model (Phi-3) – Cheat Sheet Generation (icon: brain/gear, sub-items: Prompt Generation, Inference, Markdown Output)
+  6. Markdown Output (icon: document with MD symbol)
+  7. Cheat Sheet UI (icon: monitor/dashboard, sub-items: Bold Section Headers, Comparison Tables, Real-World Examples, Quick-Reference Formulas, Troubleshooting Tips)
+
+ARROW LABELS:
+  Student → Upload:               "selects completed upload"
+  Upload → Extracted Text:        (arrow)
+  Student → Topic:                "enters topic"
+  Extracted Text + Topic → Phi-3: (both arrows merge into Ollama box)
+  Phi-3 → Markdown:               (arrow)
+  Markdown → UI:                   (arrow)
+
+PROMPT RULES (shown inside or beside Ollama box):
+  1. Focus on actionable how-to steps, not theory
+  2. Visual hierarchy with bold headers + Markdown tables
+  3. Realistic contextual examples (no placeholders)
+  4. Concise enough for a single printed page
+
+
+================================================================================
+  WORKFLOW 4:  THE 'ACADOMI BOOKMARK' SYSTEM
+================================================================================
+
+DIAGRAM TITLE:  The 'Acadomi Bookmark' System
+
+FLOW:
+
+  [Student Icon]
+      |
+      |--- during tutor session ---> [Session UI Icon]
+      |                               AI Tutor Session
+      |                               (Slide Narration Playing)
+      |                                      |
+      |  (Student clicks bookmark on a       |
+      |   subtitle line / Q&A answer)        |
+      |                                      v
+      |                               [Bookmark Icon]
+      |                               Bookmarked Line
+      |                               (Saved to MongoDB)
+      |                                      |
+      |          ┌───────────────────────────┤
+      |          |                           |
+      |          v                           v
+      |   ┌──────────────┐          ┌──────────────┐
+      |   │  RECAP PATH  │          │  CHAT PATH   │
+      |   └──────────────┘          └──────────────┘
+      |          |                           |
+      |          v                           v
+      |   ┌─────────────────────────┐ [Text Input Icon]
+      |   │  Ollama Model            │ Student Follow-up
+      |   │  (Phi-3 Mini) -          │ Question
+      |   │  Recap Script Gen.       │        |
+      |   │                          │        v
+      |   │  • Bookmark Line         │ ┌─────────────────────────┐
+      |   │  • Source Material       │ │  Ollama Model            │
+      |   │  • Inference             │ │  (Phi-3 Mini) -          │
+      |   └─────────────────────────┘ │  Bookmark Chat            │
+      |          |                    │                          │
+      |          v                    │  • Bookmark Line         │
+      |   [Document Icon]            │  • Source Material       │
+      |   Recap Script               │  • Chat History          │
+      |   (55–130 words,             │  • Inference             │
+      |    plain text)               └─────────────────────────┘
+      |          |                           |
+      |          v                           v
+      |   ┌─────────────────────┐    [Document Icon]
+      |   │   Edge TTS (Python) │    Chat Reply
+      |   │  Script → Audio MP3 │    (Markdown, 80–350 words)
+      |   └─────────────────────┘           |
+      |          |                           v
+      |          v                   ┌──────────────────────────────┐
+      |   ┌──────────────────┐      │  Bookmark Chat UI             │
+      |   │ Recap Audio      │      │                               │
+      |   │ Playback in UI   │      │  Multi-turn Conversation      │
+      |   └──────────────────┘      │  Grounded in Source Material  │
+      |                             │  Up to 8 Turns History        │
+      |                             └──────────────────────────────┘
+
+
+NODES SUMMARY (for diagram boxes):
+  1. Student (icon: person)
+  2. AI Tutor Session – Slide Narration Playing (icon: monitor with slides)
+  3. Bookmarked Line – Saved to MongoDB (icon: bookmark/ribbon)
+  4. RECAP PATH (label/divider)
+  5. Ollama Model (Phi-3 Mini) – Recap Script Generation (icon: brain/gear, sub-items: Bookmark Line, Source Material, Inference)
+  6. Recap Script – 55–130 words plain text (icon: document)
+  7. Edge TTS – Script → Audio MP3 (icon: speaker/audio)
+  8. Recap Audio Playback in UI (icon: play button)
+  9. CHAT PATH (label/divider)
+  10. Student Follow-up Question – Text Input (icon: keyboard)
+  11. Ollama Model (Phi-3 Mini) – Bookmark Chat (icon: brain/gear, sub-items: Bookmark Line, Source Material, Chat History, Inference)
+  12. Chat Reply – Markdown 80–350 words (icon: document)
+  13. Bookmark Chat UI (icon: chat bubbles, sub-items: Multi-turn Conversation, Grounded in Source Material, Up to 8 Turns History)
+
+ARROW LABELS:
+  Student → Session:              "during tutor session"
+  Session → Bookmark:             "clicks bookmark on subtitle"
+  Bookmark → Recap Path:          (arrow, split)
+  Bookmark → Chat Path:           (arrow, split)
+  Recap → Phi-3 Mini Recap:       (arrow)
+  Phi-3 Mini Recap → Script:      (arrow)
+  Script → Edge TTS:              (arrow)
+  Edge TTS → Audio Playback:      (arrow)
+  Chat → Question Input:          (arrow)
+  Question → Phi-3 Mini Chat:     (arrow)
+  Phi-3 Mini Chat → Reply:        (arrow)
+  Reply → Chat UI:                (arrow)
+
+
+================================================================================
+  STYLE GUIDE (for all 4 diagrams — match the Role Reversal reference image)
+================================================================================
+
+  BACKGROUND:      Light gray (#F2F2F2)
+  BOX STYLE:       White rounded rectangles with thin gray border
+  GEMINI BOXES:    Light blue tint background, sparkle icon (★) for Gemini
+                   (used ONLY for Text Extraction and Transcription)
+  OLLAMA BOXES:    White with brain icon (🧠) for local model processing
+                   Label clearly: "Ollama Model (Llama 2)" or "(Phi-3)" etc.
+  TTS BOXES:       White with speaker icon for Edge TTS
+  UI BOXES:        Dark header bar, white body, list items inside
+  ICONS:           Flat, minimal, single-color (black or dark gray)
+  ARROWS:          Red/coral colored directional arrows (like reference image)
+  FONTS:           Clean sans-serif (e.g., Inter, Roboto)
+  TITLE:           Bold, centered at top, large font
+  SUB-ITEMS:       Listed inside boxes as indented bullet-style text
+  JSON ICON:       Curly braces { } symbol
+  DOCUMENT ICON:   Page with lines symbol
+  AUDIO ICON:      Speaker / sound wave symbol
+
+  KEY DISTINCTION:
+    • Gemini (sparkle icon, blue tint) = Text Extraction & Transcription ONLY
+    • Ollama (brain icon, white)       = All generation / inference tasks
+    • Edge TTS (speaker icon)          = All audio synthesis
+
+================================================================================
+  END OF WORKFLOWS
+================================================================================

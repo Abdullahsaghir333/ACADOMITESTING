@@ -1,0 +1,88 @@
+========================================
+  WHERE EACH MODEL IS USED IN THE CODE
+========================================
+
+
+--- GEMINI API (Text Extraction & Transcription Only) ---
+
+File: backend/src/services/llm/router.ts
+  • extractTextFromImage()        → Extracts text from uploaded images (multimodal vision)
+  • transcribeAudioBuffer()       → Transcribes uploaded audio to text (multimodal audio)
+
+File: backend/src/routes/uploads.ts
+  • Calls extractTextFromImage() for image uploads
+  • Calls transcribeAudio() for audio uploads
+
+File: backend/src/routes/tutor.ts
+  • Calls transcribeAudio() to transcribe student's spoken question (POST /sessions/:id/ask)
+
+File: backend/src/routes/roleReversal.ts
+  • Calls transcribeAudio() to transcribe student's teaching recording (POST /evaluate)
+
+File: backend/src/routes/tutorGroup.ts
+  • Calls transcribeAudio() to transcribe group member's spoken question (POST /:id/ask)
+
+File: python/services/podcast/podcast_logic.py
+  • generate_script_from_gemini() → Generates podcast dialogue script (uses google.generativeai SDK)
+
+
+--- LLAMA 2 (via Ollama — Tutor Slides, Q&A, ELI5) ---
+
+Configured in: backend/src/services/llm/config.ts
+  • ollamaModelTutor() → returns "llama2" (env: OLLAMA_MODEL_TUTOR)
+
+Called via: backend/src/services/llm/router.ts
+  • completeTutorPrompt() → routes to ollamaChat(ollamaModelTutor(), prompt)
+
+Used in: backend/src/services/gemini.ts
+  • generateTutorSlidesAndScripts()   → Generates 6–14 slide decks with scripts (line 377)
+  • answerTutorQuestion()             → Answers student Q&A during session (line 419)
+  • generateTutorSlideEli5Script()    → Generates ELI5 simplified script (line 447)
+
+Used in: backend/src/routes/tutor.ts
+  • POST /sessions           → Creates tutor session, calls generateTutorSlidesAndScripts()
+  • POST /sessions/:id/ask   → Calls answerTutorQuestion() after transcription
+  • POST /sessions/:id/slides/:idx/eli5 → Calls generateTutorSlideEli5Script()
+
+Used in: backend/src/routes/tutorGroup.ts
+  • POST /:id/ask            → Calls answerTutorQuestion() for group Q&A
+
+
+--- PHI-3 (via Ollama — Role Reversal Eval, Cheat Sheets) ---
+
+Configured in: backend/src/services/llm/config.ts
+  • ollamaModelStructured() → returns "phi3" (env: OLLAMA_MODEL_STRUCTURED)
+
+Called via: backend/src/services/llm/router.ts
+  • completeStructuredPrompt() → routes to ollamaChat(ollamaModelStructured(), prompt)
+
+Used in: backend/src/services/gemini.ts
+  • evaluateRoleReversalTeaching()       → Evaluates student's teaching attempt, outputs JSON scores (line 164)
+  • generateSmartCheatSheetMarkdown()    → Generates markdown cheat sheet for a topic (line 483)
+
+Used in: backend/src/routes/roleReversal.ts
+  • POST /evaluate           → Calls evaluateRoleReversalTeaching()
+
+Used in: backend/src/routes/cheatSheets.ts
+  • POST /generate           → Calls generateSmartCheatSheetMarkdown()
+
+
+--- PHI-3 MINI (via Ollama — Notes, Bookmarks, Recap) ---
+
+Configured in: backend/src/services/llm/config.ts
+  • ollamaModelLight() → returns "phi3:mini" (env: OLLAMA_MODEL_LIGHT)
+
+Called via: backend/src/services/llm/router.ts
+  • completeLightPrompt() → routes to ollamaChat(ollamaModelLight(), prompt)
+
+Used in: backend/src/services/gemini.ts
+  • synthesizeLearningNotes()        → Generates study notes from extracted text (line 20)
+  • generateBookmarkRecapScript()    → Generates spoken recap for a bookmark (line 519)
+  • answerBookmarkQuestion()         → Answers follow-up chat about a bookmark (line 548)
+
+Used in: backend/src/routes/uploads.ts
+  • POST /                   → Calls synthesizeLearningNotes() after text extraction
+
+Used in: backend/src/routes/bookmarks.ts
+  • POST /:id/recap/tts      → Calls generateBookmarkRecapScript()
+  • POST /:id/chat           → Calls answerBookmarkQuestion()

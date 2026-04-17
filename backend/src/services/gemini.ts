@@ -1,3 +1,24 @@
+/**
+ * Text generation always goes through **Ollama** in `llm/router.ts` (never Gemini):
+ * - **Llama 2** — tutor slides, Q&A, ELI5 (`completeTutorPrompt`)
+ * - **Phi-3** — role-reversal eval, cheat sheets (`completeStructuredPrompt`)
+ * - **Phi-3 Mini** — study notes, bookmarks (`completeLightPrompt`)
+ * **Gemini** is only used for image/audio extraction (`extractTextFromImage`, `transcribeAudioBuffer`).
+ *
+ * Line map (this file → `llm/router.ts` → `llm/config.ts`):
+ * | Model (default) | Export / call site (this file)                    | `router.ts` dispatch      | `config.ts` |
+ * |-----------------|---------------------------------------------------|----------------------------|-------------|
+ * | Gemini          | `extractTextFromImage` (30–31 → router)           | `extractTextFromImage` 51–65 | `GEMINI_MODEL` |
+ * | Gemini          | `transcribeAudio` (34–35 → router)                | `transcribeAudioBuffer` 70–89 | `GEMINI_MODEL` |
+ * | Phi-3 Mini      | `synthesizeLearningNotes` → `completeLightPrompt` (63) | `completeLightPrompt` 37–38 | `ollamaModelLight` 27–29 |
+ * | Phi-3           | `evaluateRoleReversalTeaching` → `completeStructuredPrompt` (235) | `completeStructuredPrompt` 44–45 | `ollamaModelStructured` 32–34 |
+ * | Llama 2         | `generateTutorSlidesAndScripts` → `completeTutorPrompt` (423) | `completeTutorPrompt` 30–32 | `ollamaModelTutor` 22–24 |
+ * | Llama 2         | `answerTutorQuestion` → `completeTutorPrompt` (462) | `completeTutorPrompt` 30–32 | `ollamaModelTutor` |
+ * | Llama 2         | `generateTutorSlideEli5Script` → `completeTutorPrompt` (491) | `completeTutorPrompt` 30–32 | `ollamaModelTutor` |
+ * | Phi-3           | `generateSmartCheatSheetMarkdown` → `completeStructuredPrompt` (533) | `completeStructuredPrompt` 44–45 | `ollamaModelStructured` |
+ * | Phi-3 Mini      | `generateBookmarkRecapScript` → `completeLightPrompt` (561) | `completeLightPrompt` 37–38 | `ollamaModelLight` |
+ * | Phi-3 Mini      | `answerBookmarkQuestion` → `completeLightPrompt` (595) | `completeLightPrompt` 37–38 | `ollamaModelLight` |
+ */
 import {
   completeLightPrompt,
   completeStructuredPrompt,
@@ -372,7 +393,7 @@ function normalizeTutorSlides(raw: unknown): TutorSlideDraft[] {
 }
 
 /**
- * Build slide deck + per-slide spoken scripts for the Meet-style AI tutor (Llama 2 via Ollama when LLM_BACKEND=ollama).
+ * Build slide deck + per-slide spoken scripts for the Meet-style AI tutor (Llama 2 via Ollama).
  */
 export async function generateTutorSlidesAndScripts(
   material: string,

@@ -1,3 +1,13 @@
+/**
+ * Upload pipeline: PDF text = local parse (`pdfText`). Image/audio extraction = **Gemini** multimodal.
+ * Study notes from extracted text = **Phi-3 Mini** (Ollama, `completeLightPrompt`).
+ *
+ * | Line(s) | Model      | `gemini.ts` → `llm/router.ts` |
+ * |---------|------------|-------------------------------|
+ * | 122     | Gemini     | `extractTextFromImage` → `extractTextFromImage` L51 |
+ * | 125     | Gemini     | `transcribeAudio` → `transcribeAudioBuffer` L70 |
+ * | 129     | Phi-3 Mini | `synthesizeLearningNotes` → L63 `completeLightPrompt` L37 |
+ */
 import { Router, type Response } from "express";
 import type { Express } from "express";
 import multer from "multer";
@@ -9,7 +19,7 @@ import {
   synthesizeLearningNotes,
   transcribeAudio,
 } from "../services/gemini.js";
-import { hasGeminiForTranscription, isLlmConfigured } from "../services/llm/llmReady.js";
+import { hasGeminiApiKey } from "../services/llm/llmReady.js";
 
 const router = Router();
 const MAX_UPLOADS_PER_USER = 7;
@@ -54,25 +64,18 @@ router.post(
     const files = req.files as Express.Multer.File[] | undefined;
     const kind = req.body?.type as string | undefined;
 
-    if (!isLlmConfigured()) {
-      return res.status(500).json({
-        error:
-          "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
-      });
-    }
-    if (kind === "audio" && !hasGeminiForTranscription()) {
-      return res.status(500).json({
-        error:
-          "Audio uploads need GEMINI_API_KEY for speech-to-text. Use PDF/images with Ollama-only mode, or add GEMINI_API_KEY.",
-      });
-    }
-
     const userPrompt = typeof req.body?.prompt === "string" ? req.body.prompt : "";
     const titleFromUser =
       typeof req.body?.title === "string" ? req.body.title.trim().slice(0, 200) : "";
 
     if (!kind || !["pdf", "image", "audio"].includes(kind)) {
       return res.status(400).json({ error: 'Invalid or missing "type" (pdf | image | audio).' });
+    }
+    if ((kind === "image" || kind === "audio") && !hasGeminiApiKey()) {
+      return res.status(500).json({
+        error:
+          "Image and audio uploads use Google Gemini for extraction/transcription. Set GEMINI_API_KEY in backend/.env.",
+      });
     }
     if (!files?.length) {
       return res.status(400).json({ error: "No files uploaded." });

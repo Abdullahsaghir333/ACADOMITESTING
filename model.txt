@@ -1,35 +1,845 @@
-# Acadomi LLM Usage Mapping
+================================================================================
+                   ACADOMI — COMPLETE AI / LLM / MODEL REFERENCE
+================================================================================
 
-This document details which Language Model (LLM) is used for which specific feature across the Acadomi project. The platform uses Google's Gemini models by default, with fallback support for local Ollama models depending on the environment configuration (`LLM_BACKEND`).
+This document provides an exhaustive reference of every AI model, ML pipeline,
+and generation-related code path used across the Acadomi project. It covers:
 
-## Features & LLM Mapping
+  1. LLM routing architecture
+  2. Feature-by-feature model mapping (with exact code locations)
+  3. Python microservice code walkthroughs
+  4. Non-LLM AI models (computer-vision, TTS engines)
+  5. Environment variables & configuration
+  6. Data flow diagrams (text)
 
-### 1. AI Tutor (Slides, Live Q&A, ELI5)
-- **Primary LLM:** Gemini (e.g., `gemini-2.5-flash` or configurable via `GEMINI_MODEL`)
-- **Fallback/Local:** Llama / Custom Models via Ollama (configured via `OLLAMA_MODEL_TUTOR`)
-- **Location:** `completeTutorPrompt` inside `router.ts`
+================================================================================
+  TABLE OF CONTENTS
+================================================================================
 
-### 2. Study Notes & Bookmark Recap/Chat
-- **Primary LLM:** Gemini
-- **Fallback/Local:** Lightweight local model via Ollama (configured via `OLLAMA_MODEL_LIGHT`)
-- **Location:** `completeLightPrompt` inside `router.ts`
+  1. Architecture Overview
+  2. LLM Router (backend/src/services/llm/)
+  3. Feature → Model Mapping
+      3.1   Upload Processing (PDF / Image / Audio)
+      3.2   Study Notes Synthesis
+      3.3   AI Tutor — Slide Generation
+      3.4   AI Tutor — Live Q&A
+      3.5   AI Tutor — ELI5 (Explain Like I'm Five)
+      3.6   Role-Reversal Evaluation
+      3.7   Cheat Sheet Generation
+      3.8   Bookmark Recap Script
+      3.9   Bookmark Chat (Follow-up Q&A)
+      3.10  Podcast Script Generation (Python)
+      3.11  Podcast Audio Synthesis (Python)
+      3.12  Tutor TTS — Edge TTS (Python)
+      3.13  Focus / Attention Monitoring (Python)
+      3.14  Group Tutor Session
+  4. Python Services — Full Code Walkthrough
+      4.1   Podcast Service  (python/services/podcast/)
+      4.2   Tutor Service    (python/services/tutor/)
+  5. Non-LLM AI Models
+  6. Environment Configuration Reference
+  7. End-to-End Data Flow Diagrams
 
-### 3. Role-Reversal Q&A & Cheat Sheets (Structured Outputs)
-- **Primary LLM:** Gemini
-- **Fallback/Local:** Formatted JSON output model via Ollama (configured via `OLLAMA_MODEL_STRUCTURED`)
-- **Location:** `completeStructuredPrompt` inside `router.ts`
 
-### 4. Image Text Extraction / Vision (OCR)
-- **Primary LLM (Multimodal):** Gemini Vision
-- **Alternatives:** `tesseract.js` (standard OCR) or Ollama Vision Chat (configured via `OLLAMA_MODEL_VISION`)
-- **Location:** `extractTextFromImage` inside `router.ts`
+================================================================================
+  1.  ARCHITECTURE OVERVIEW
+================================================================================
 
-### 5. Audio Transcription (Speech-to-Text)
-- **Primary LLM:** Gemini (multimodal audio transcription)
-- **Note:** Only Gemini is used here in the core backend. If an API key is missing, requires a local Whisper server or client-side transcription.
-- **Location:** `transcribeAudioBuffer` inside `router.ts`
+Acadomi is a three-tier system:
 
-### 6. Podcast Generation (Script Writing)
-- **Primary LLM:** Gemini (`gemini-2.5-flash` by default)
-- **Action:** Converts study materials and notes into a natural two-person (Alice & Bob) conversational dialogue (JSON). This is then pumped into `gTTS` for Text-to-Speech logic.
-- **Location:** `generate_script_from_gemini` inside `python/services/podcast/podcast_logic.py`
+  ┌──────────┐      ┌──────────────────┐      ┌──────────────────────────────┐
+  │ Frontend │ ←──→ │  Node.js/Express │ ←──→ │  Python Microservices (x2)   │
+  │ (Next.js)│      │   Backend API    │      │  • Podcast (Flask, port 5001)│
+  └──────────┘      │   (port 4000)    │      │  • Tutor  (FastAPI, port 5002│
+                    └──────────────────┘      └──────────────────────────────┘
+                            ↕                          ↕
+                      ┌──────────┐            ┌────────────────┐
+                      │ MongoDB  │            │ External APIs: │
+                      │ + GridFS │            │ • Google Gemini│
+                      └──────────┘            │ • Ollama (local│
+                                              │ • Edge TTS     │
+                                              │ • gTTS         │
+                                              └────────────────┘
+
+All LLM calls from Node.js flow through a single router:
+  backend/src/services/llm/router.ts
+
+That router checks the LLM_BACKEND env var and dispatches to either:
+  • Google Gemini  (@google/generative-ai SDK)
+  • Ollama (local) (HTTP fetch to Ollama REST API)
+
+The two Python services have their OWN model usage:
+  • Podcast service calls Gemini directly (google.generativeai Python SDK)
+  • Tutor service does NOT call any LLM — it runs Edge TTS and MediaPipe only
+
+
+================================================================================
+  2.  LLM ROUTER  (backend/src/services/llm/)
+================================================================================
+
+The LLM layer consists of 4 files:
+
+  FILE                    PURPOSE
+  ─────────────────────── ──────────────────────────────────────────────────────
+  config.ts               Reads env vars; exports backend type & model names
+  ollama.ts               HTTP client for Ollama /api/chat (text & vision)
+  router.ts               Central router: decides Gemini vs Ollama per call
+  llmReady.ts             Guards: isLlmConfigured() and hasGeminiForTranscription()
+
+─── config.ts ───
+
+  getLlmBackend()           → "gemini" | "ollama"
+                             Reads LLM_BACKEND env. Default: "gemini".
+                             If "auto": uses ollama when OLLAMA_HOST is set.
+
+  ollamaBaseUrl()           → default http://127.0.0.1:11434
+
+  ollamaModelTutor()        → env OLLAMA_MODEL_TUTOR   or "llama2"
+  ollamaModelLight()        → env OLLAMA_MODEL_LIGHT   or "phi3:mini"
+  ollamaModelStructured()   → env OLLAMA_MODEL_STRUCTURED or "phi3"
+  ollamaModelVision()       → env OLLAMA_MODEL_VISION  or "llava"
+
+  getImageTextBackend()     → "gemini" | "tesseract" | "ollama"
+                             Reads IMAGE_TEXT_BACKEND env. Defaults:
+                             if LLM_BACKEND=ollama → "tesseract", else "gemini"
+
+─── ollama.ts ───
+
+  ollamaChat(model, prompt, system?)
+      Single-turn, non-streaming chat via POST /api/chat.
+      10-minute timeout. Used for text-only Ollama calls.
+
+  ollamaVisionChat(model, prompt, imageBase64)
+      Vision chat. Passes base64 image in the "images" array.
+      Used for OCR-via-LLM when IMAGE_TEXT_BACKEND=ollama.
+
+─── router.ts (THE CORE DISPATCHER) ───
+
+  getGeminiModel()
+      Reads GEMINI_API_KEY and GEMINI_MODEL (default "gemini-2.5-flash").
+      Returns a GoogleGenerativeAI model instance.
+
+  FUNCTION                    GEMINI PATH                    OLLAMA PATH
+  ────────────────────────── ──────────────────────────────── ────────────────────
+  completeTutorPrompt()       gemini-2.5-flash               llama2 (via Ollama)
+  completeLightPrompt()       gemini-2.5-flash               phi3:mini (via Ollama)
+  completeStructuredPrompt()  gemini-2.5-flash               phi3 (via Ollama)
+  extractTextFromImage()      gemini-2.5-flash (multimodal)  llava (via Ollama)
+                              OR tesseract.js (no LLM)
+  transcribeAudioBuffer()     gemini-2.5-flash (multimodal)  ❌ NOT SUPPORTED
+                              (audio only works with Gemini)
+
+─── llmReady.ts ───
+
+  isLlmConfigured()
+      True if LLM_BACKEND=ollama OR GEMINI_API_KEY is set.
+      All generation routes check this before proceeding.
+
+  hasGeminiForTranscription()
+      True only if GEMINI_API_KEY is set. Required for audio features
+      (speech-to-text) since Ollama has no built-in audio path.
+
+
+================================================================================
+  3.  FEATURE → MODEL MAPPING (with exact code paths)
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.1  UPLOAD PROCESSING (PDF / Image / Audio)
+────────────────────────────────────────────────────────────────────────────────
+
+  Route:     POST /api/uploads
+  File:      backend/src/routes/uploads.ts
+
+  Depending on the upload type:
+
+  TYPE    EXTRACTION METHOD             MODEL / LIBRARY USED
+  ───── ──────────────────────────────  ─────────────────────────────────────
+  PDF     extractTextFromPdf()           pdf-parse (Node library, NO LLM)
+          File: services/pdfText.ts      Pure text extraction from PDF binary.
+
+  Image   extractTextFromImage()         Gemini 2.5 Flash (multimodal)
+          File: llm/router.ts            Sends image as inlineData with prompt:
+                                         "Extract all readable text from this
+                                          image with maximum accuracy..."
+                                         OR tesseract.js (offline OCR, no LLM)
+                                         OR llava via Ollama (vision model)
+
+  Audio   transcribeAudioBuffer()        Gemini 2.5 Flash (multimodal)
+          File: llm/router.ts            Sends audio as inlineData with prompt:
+                                         "Transcribe this audio with high accuracy..."
+                                         ⚠ ONLY works with Gemini. No Ollama path.
+
+  After extraction, EVERY upload (regardless of type) passes through:
+  synthesizeLearningNotes() → completeLightPrompt()
+    (see 3.2 below)
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.2  STUDY NOTES SYNTHESIS
+────────────────────────────────────────────────────────────────────────────────
+
+  Function:  synthesizeLearningNotes(extractedText, userPrompt)
+  File:      backend/src/services/gemini.ts  (line 20)
+  LLM call:  completeLightPrompt()
+
+  MODEL (Gemini mode):    gemini-2.5-flash
+  MODEL (Ollama mode):    phi3:mini
+
+  What it does:
+    Takes extracted text (from PDF/image/audio) + user instructions.
+    Generates structured markdown study notes with:
+      1. Summary
+      2. Key concepts (bullet list)
+      3. Study tips (2–4 practical next steps)
+
+  Prompt character:  "You are Acadomi, an assistant for higher-education learners."
+  Input limit:       extractedText is sliced to 120,000 chars.
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.3  AI TUTOR — SLIDE GENERATION
+────────────────────────────────────────────────────────────────────────────────
+
+  Route:     POST /api/tutor/sessions
+  File:      backend/src/routes/tutor.ts  (line 106)
+  Function:  generateTutorSlidesAndScripts(material, topicFocus)
+  File:      backend/src/services/gemini.ts  (line 377)
+  LLM call:  completeTutorPrompt()
+
+  MODEL (Gemini mode):    gemini-2.5-flash
+  MODEL (Ollama mode):    llama2
+
+  What it does:
+    Converts study material into 6–14 structured slides. Each slide has:
+      • title        — short heading
+      • points[]     — 2–5 bullet points
+      • script       — spoken narration text (40–90 words, conversational)
+      • pointTimings — millisecond ranges mapping bullets to script segments
+
+  Output format:  JSON  {"slides":[{"title":"...","points":[...],"script":"...","pointTimings":[...]}]}
+  Input limit:    material sliced to 100,000 chars.
+
+  Post-processing in normalizeTutorSlides():
+    • Validates each slide has title, script, and ≥1 point
+    • Falls back to word-count-weighted timing if model timings are invalid
+    • Requires ≥3 valid slides; caps at 16 slides max
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.4  AI TUTOR — LIVE Q&A
+────────────────────────────────────────────────────────────────────────────────
+
+  Route:     POST /api/tutor/sessions/:id/ask
+  File:      backend/src/routes/tutor.ts  (line 344)
+  Function:  answerTutorQuestion({question, slideTitle, slidePoints, slideScript, materialExcerpt})
+  File:      backend/src/services/gemini.ts  (line 419)
+
+  Pipeline (two LLM calls total):
+    1. transcribeAudio(audioBuffer)   → Gemini 2.5 Flash (multimodal, audio→text)
+    2. completeTutorPrompt(body)      → Gemini 2.5 Flash OR llama2 (Ollama)
+
+  What it does:
+    Step 1: Transcribes student's spoken question from audio.
+    Step 2: Generates a 2–6 sentence spoken answer grounded in the current slide
+            and reference material.
+
+  Prompt character:  "You are a live tutor in a video-style session."
+  Reference material limit:  24,000 chars.
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.5  AI TUTOR — ELI5 (Explain Like I'm Five)
+────────────────────────────────────────────────────────────────────────────────
+
+  Route:     POST /api/tutor/sessions/:id/slides/:slideIndex/eli5
+  File:      backend/src/routes/tutor.ts  (line 250)
+  Function:  generateTutorSlideEli5Script(params)
+  File:      backend/src/services/gemini.ts  (line 447)
+  LLM call:  completeTutorPrompt()
+
+  MODEL (Gemini mode):    gemini-2.5-flash
+  MODEL (Ollama mode):    llama2
+
+  What it does:
+    Rewrites one slide's script in the simplest possible language.
+    55–130 words. Plain text only (for TTS). Same facts, simpler words.
+    Result is cached in the DB (slide.eli5Script) for repeat requests.
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.6  ROLE-REVERSAL EVALUATION
+────────────────────────────────────────────────────────────────────────────────
+
+  Route:     POST /api/role-reversal/evaluate
+  File:      backend/src/routes/roleReversal.ts  (line 43)
+
+  Pipeline (two LLM calls):
+    1. transcribeAudio(audioBuffer)
+       → Gemini 2.5 Flash (multimodal)
+
+    2. evaluateRoleReversalTeaching({topic, referenceMaterial, studentTranscript})
+       File: backend/src/services/gemini.ts  (line 164)
+       → completeStructuredPrompt()
+
+  MODEL for transcription:   Gemini 2.5 Flash (always)
+  MODEL for evaluation:
+    Gemini mode:  gemini-2.5-flash
+    Ollama mode:  phi3
+
+  What it does:
+    The student records themselves "teaching" a topic. The audio is transcribed,
+    then compared against reference material. The LLM outputs a structured JSON
+    evaluation:
+
+      {
+        "scoreClarity":    0–100,
+        "scoreConcepts":   0–100,
+        "scoreFluency":    0–100,
+        "totalScore":      0–100,
+        "feedback":        "2–4 sentences",
+        "topicUnderstanding": "...",
+        "weakness":        "...",
+        "strength":        "...",
+        "visualHints": {
+          "radar":      [{label, value}...],
+          "barCompare": [{label, you, ideal}...]
+        }
+      }
+
+  Post-processing in normalizeEvaluation():
+    • Clamps all scores to 0–100
+    • Calculates totalScore as average if model omits it
+    • Normalizes camelCase / snake_case key variants
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.7  CHEAT SHEET GENERATION
+────────────────────────────────────────────────────────────────────────────────
+
+  Route:     POST /api/cheat-sheets/generate
+  File:      backend/src/routes/cheatSheets.ts  (line 46)
+  Function:  generateSmartCheatSheetMarkdown(material, topic)
+  File:      backend/src/services/gemini.ts  (line 483)
+  LLM call:  completeStructuredPrompt()
+
+  MODEL (Gemini mode):    gemini-2.5-flash
+  MODEL (Ollama mode):    phi3
+
+  What it does:
+    Generates a dense, scannable Markdown cheat sheet for one topic.
+    Strict rules enforced via prompt:
+      1. Focus on actionable "how-to" steps, not theory
+      2. Visual hierarchy with bold headers and Markdown tables
+      3. Realistic contextual examples (no placeholders)
+      4. Fits a single printed page
+    Output limit: 120,000 chars, outer markdown fences stripped.
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.8  BOOKMARK RECAP SCRIPT
+────────────────────────────────────────────────────────────────────────────────
+
+  Route:     POST /api/bookmarks/:id/recap/tts
+  File:      backend/src/routes/bookmarks.ts  (line 197)
+  Function:  generateBookmarkRecapScript(params)
+  File:      backend/src/services/gemini.ts  (line 519)
+  LLM call:  completeLightPrompt()
+
+  MODEL (Gemini mode):    gemini-2.5-flash
+  MODEL (Ollama mode):    phi3:mini
+
+  What it does:
+    Generates a short spoken recap (55–130 words) expanding a bookmarked
+    tutor subtitle line. Plain text for TTS. Cached in DB (bookmark.recapScript).
+    After generation, text is sent to the Python Tutor Service for Edge TTS
+    audio synthesis.
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.9  BOOKMARK CHAT (Follow-up Q&A)
+────────────────────────────────────────────────────────────────────────────────
+
+  Route:     POST /api/bookmarks/:id/chat
+  File:      backend/src/routes/bookmarks.ts  (line 255)
+  Function:  answerBookmarkQuestion(params)
+  File:      backend/src/services/gemini.ts  (line 548)
+  LLM call:  completeLightPrompt()
+
+  MODEL (Gemini mode):    gemini-2.5-flash
+  MODEL (Ollama mode):    phi3:mini
+
+  What it does:
+    Multi-turn text chat about a bookmarked concept. Maintains up to 8 turns
+    of conversation history. Answers grounded in original upload material.
+    80–350 words typical response length.
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.10  PODCAST SCRIPT GENERATION (Python)
+────────────────────────────────────────────────────────────────────────────────
+
+  Route:     POST /api/podcasts/generate  (Node backend proxies to Python)
+  File:      backend/src/routes/podcasts.ts  (line 48)
+             → HTTP POST to Python service at PODCAST_SERVICE_URL/generate-podcast
+
+  Python file:  python/services/podcast/podcast_logic.py
+  Function:     generate_script_from_gemini(source_text, ...)
+  SDK:          google.generativeai (Python SDK — NOT the Node SDK)
+
+  MODEL:   Gemini 2.5 Flash  (configurable via GEMINI_MODEL env)
+           ⚠ ALWAYS uses Gemini. No Ollama path in the podcast service.
+
+  What it does:
+    Converts study material into a two-person conversational podcast script
+    between "Alice" and "Bob". Output is a JSON array:
+      [{"speaker":"Alice","text":"..."},{"speaker":"Bob","text":"..."}, ...]
+
+    Rules enforced via prompt:
+      • 8–14 short turns
+      • Faithful to source material
+      • Plain English suitable for text-to-speech
+      • Alternating speakers
+
+  Post-processing in _parse_dialogue_json_array():
+    • Strips markdown code fences
+    • Handles wrapped objects {"dialogue": [...]}
+    • Falls back to greedy bracket regex matching
+    • Validates speaker names are exactly "Alice" or "Bob"
+
+  The GEMINI_API_KEY is forwarded from the Node backend in the request body.
+  This allows the Python service to run without its own .env when called by Node.
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.11  PODCAST AUDIO SYNTHESIS (Python)
+────────────────────────────────────────────────────────────────────────────────
+
+  Python file:  python/services/podcast/podcast_logic.py
+  Function:     create_podcast_mp3_bytes(script)
+  Libraries:    gTTS (Google Text-to-Speech) + pydub + FFmpeg
+
+  MODEL:   gTTS (Google Cloud TTS — free tier, no API key needed)
+           NOT an LLM. This is a neural TTS service.
+
+  What it does:
+    Takes the dialogue script from 3.10 and synthesizes audio:
+      • Alice → British English accent (tld="co.uk")
+      • Bob   → Indian English accent (tld="co.in")
+      • 400ms silence between turns
+      • Combined into single MP3 at 64kbps
+    Returns base64-encoded MP3 bytes + duration.
+
+  Dependencies:
+    • gTTS — calls Google Translate's TTS endpoint (no API key)
+    • pydub — audio segment manipulation
+    • FFmpeg/FFprobe — required by pydub for MP3 encoding/decoding
+      (extensive auto-discovery logic for Windows WinGet installs)
+
+  The audio is stored in MongoDB GridFS via:
+    backend/src/services/gridfsPodcast.ts
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.12  TUTOR TTS — Edge TTS (Python)
+────────────────────────────────────────────────────────────────────────────────
+
+  Routes that use TTS:
+    POST /api/tutor/tts                              (generic text → speech)
+    POST /api/tutor/sessions/:id/slides/:idx/tts     (slide narration)
+    POST /api/tutor/sessions/:id/ask                  (answer playback)
+    POST /api/tutor-groups/:id/tts                   (group session TTS)
+    POST /api/tutor-groups/:id/slides/:idx/tts       (group slide TTS)
+    POST /api/bookmarks/:id/recap/tts                 (bookmark recap audio)
+
+  Node-side client:
+    File:      backend/src/services/tutorPythonClient.ts
+    Function:  tutorPyTts(text)  → HTTP POST to TUTOR_SERVICE_URL/tts
+
+  Python-side handler:
+    File:      python/services/tutor/app.py
+    Function:  tts(body)  (FastAPI POST /tts)
+    Engine:    _synthesize_edge_tts(text)
+
+  MODEL:   Microsoft Edge TTS (edge-tts Python library)
+           Voice: "en-US-ChristopherNeural" (configurable via EDGE_TTS_VOICE env)
+           NOT an LLM. This is Microsoft's neural text-to-speech service.
+           Free, no API key required. Uses the same backend as Edge browser's
+           "Read Aloud" feature.
+
+  What it does:
+    Takes plain text, streams Edge TTS audio chunks, concatenates to MP3 bytes,
+    returns as base64-encoded audio with mimeType "audio/mpeg".
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.13  FOCUS / ATTENTION MONITORING (Python — Computer Vision)
+────────────────────────────────────────────────────────────────────────────────
+
+  Routes:
+    POST /api/tutor/sessions/:id/focus/reset    (reset tracker for session)
+    POST /api/tutor/sessions/:id/focus/analyze  (analyze one webcam frame)
+
+  Node-side:  tutor.ts calls pyFocusReset() and pyFocusAnalyze()
+              → HTTP to TUTOR_SERVICE_URL/focus/reset and /focus/analyze
+
+  Python-side:
+    File:      python/services/tutor/app.py       (FastAPI endpoints)
+    File:      python/services/tutor/focus_tracker.py  (core logic)
+
+  MODEL:   MediaPipe FaceMesh (Google)
+           Version: mediapipe >=0.10.21, <0.10.30 (requires Python 3.10–3.12)
+           NOT an LLM. This is a real-time face landmark detection model.
+
+  Supporting library:  OpenCV (cv2) for image decoding and pose estimation
+
+  What it does (FocusTracker class):
+
+    CALIBRATION PHASE (first 30 frames):
+      • Records baseline pitch, yaw, and EAR (Eye Aspect Ratio)
+      • Determines the student's "natural" head position and eye openness
+
+    MONITORING PHASE (every subsequent frame):
+      a) HEAD POSE ESTIMATION
+         Uses 6 facial landmarks + solvePnP to compute pitch/yaw/roll.
+         Compares against baseline with configurable tolerances:
+           PITCH_TOLERANCE = 25°    HEAD_DOWN_THRESH = 45°
+           YAW_TOLERANCE   = 20°
+
+      b) EYE ASPECT RATIO (EAR)
+         Measures eye openness using 6 landmarks per eye.
+         Detects:
+           • Blinks    (EAR drops > 0.03 from baseline)
+           • Drowsiness (sustained EAR drop > 0.017 for > 0.85s)
+           • Eyes closed (EAR drop > 0.04 sustained > 15s → WAKE UP alarm)
+
+      c) IRIS GAZE TRACKING
+         Tracks iris positions (landmarks 468, 473) relative to eye corners.
+         Computes gaze variance over 30-frame window.
+         Detects staring (no blinks for 15s + no gaze movement for 15s).
+
+      d) COMPOSITE FOCUS SCORE (0–100)
+         focus = pose_score × 0.4 + eye_score × 0.3 + gaze_score × 0.3
+         Smoothed over 20-frame rolling history.
+
+         STATUS LEVELS:
+           > 75  → FOCUSED
+           > 40  → DISTRACTED
+           ≤ 40  → NOT FOCUSED (triggers alarm)
+
+         ALARM CONDITIONS:
+           • Eyes closed > 15s     → "WAKE UP"
+           • Head down > 15s       → "HEAD DOWN"
+           • Staring (no blink/gaze for 15s) → "PLEASE BLINK"
+
+    Thread safety:
+      FaceMesh must run on the same thread it was created on.
+      All tracker work is funneled through a single-thread ThreadPoolExecutor.
+
+
+────────────────────────────────────────────────────────────────────────────────
+3.14  GROUP TUTOR SESSION
+────────────────────────────────────────────────────────────────────────────────
+
+  Route:     POST /api/tutor-groups/:id/ask
+  File:      backend/src/routes/tutorGroup.ts  (line 458)
+
+  Same pipeline as individual tutor Q&A (3.4):
+    1. transcribeAudio() → Gemini 2.5 Flash (multimodal)
+    2. answerTutorQuestion() → completeTutorPrompt()
+       → Gemini 2.5 Flash OR llama2 (Ollama)
+
+  Additional behavior:  answer is broadcast to all group members via Socket.IO
+  (group:qa event). TTS is also available per-slide and per-answer.
+
+
+================================================================================
+  4.  PYTHON SERVICES — FULL CODE WALKTHROUGH
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+4.1  PODCAST SERVICE  (python/services/podcast/)
+────────────────────────────────────────────────────────────────────────────────
+
+  Framework:   Flask
+  Port:        5001 (FLASK_PORT env)
+  Entry point: python/services/podcast/app.py
+
+  FILES:
+    app.py             — Flask HTTP server, /health and /generate-podcast
+    podcast_logic.py   — All generation logic (Gemini script + gTTS audio)
+    .env.example       — Configuration template
+    requirements.txt   — (in _template/ sibling)
+
+  ENDPOINTS:
+
+    GET  /health
+      Returns service status + ffmpeg availability check.
+
+    POST /generate-podcast
+      Body: { "text": "...", "geminiApiKey": "...", "geminiModel": "..." }
+      Returns: { "script": [...], "mimeType": "audio/mpeg",
+                 "durationMs": N, "audioBase64": "..." }
+
+  CODE FLOW (build_podcast_payload):
+    1. ensure_pydub_ffmpeg()
+       → Validates ffmpeg/ffprobe are available
+       → Searches: env vars → WinGet packages → PATH → shutil.which
+       → Patches pydub's converter and prober paths
+
+    2. generate_script_from_gemini(source_text)
+       → Configures Gemini (genai.configure(api_key=...))
+       → Creates GenerativeModel("gemini-2.5-flash")
+       → Sends prompt asking for JSON dialogue array
+       → Parses response with _parse_dialogue_json_array():
+           a) Strips markdown fences
+           b) raw_decode from first '['
+           c) Falls back to {"dialogue": [...]} object wrapper
+           d) Falls back to greedy regex [\s\S]*]
+       → Validates: speaker ∈ {"Alice","Bob"}, text non-empty, ≥2 lines
+
+    3. create_podcast_mp3_bytes(script)
+       → For each dialogue turn:
+           a) gTTS(text, lang="en", tld="co.uk"|"co.in")  → MP3 file
+           b) AudioSegment.from_mp3(path)
+           c) Append 400ms silence
+       → Concatenate all segments
+       → Export combined audio as MP3 at 64kbps
+       → Return (bytes, duration_ms)
+       → Clean up temp directory
+
+
+────────────────────────────────────────────────────────────────────────────────
+4.2  TUTOR SERVICE  (python/services/tutor/)
+────────────────────────────────────────────────────────────────────────────────
+
+  Framework:   FastAPI + Uvicorn
+  Port:        5002 (TUTOR_PORT env)
+  Entry point: python/services/tutor/app.py
+
+  FILES:
+    app.py             — FastAPI HTTP server with /tts, /focus/reset, /focus/analyze
+    focus_tracker.py   — MediaPipe FaceMesh attention monitoring engine
+    requirements.txt   — Dependencies (fastapi, mediapipe, edge-tts, opencv, etc.)
+
+  ENDPOINTS:
+
+    GET  /health
+      Returns service status + mediapipe FaceMesh availability check.
+
+    POST /tts
+      Body: { "text": "..." }  (1–8000 chars)
+      Returns: { "mimeType": "audio/mpeg", "audioBase64": "..." }
+      Uses: edge-tts library → Microsoft Edge Neural TTS → MP3 bytes
+
+    POST /focus/reset
+      Body: { "session_key": "..." }
+      Creates or resets a FocusTracker instance for the given session.
+      All work runs on a single dedicated thread (ThreadPoolExecutor).
+
+    POST /focus/analyze
+      Body: { "session_key": "...", "image_base64": "..." }
+      Decodes base64 → numpy array → OpenCV frame → FaceMesh processing.
+      Returns focus metrics (JSON): faceFound, focusVal, status, alarm,
+      pitch, yaw, roll, ear, gaze metrics, calibration progress, etc.
+
+  DEPENDENCIES (requirements.txt):
+    fastapi>=0.115.0
+    uvicorn[standard]>=0.32.0
+    python-multipart>=0.0.12
+    pydantic>=2.0
+    python-dotenv>=1.0.0
+    opencv-python>=4.8.0
+    mediapipe>=0.10.21,<0.10.30     (Python 3.10–3.12 only)
+    numpy>=1.24.0,<2
+    edge-tts>=7.0.0
+
+
+================================================================================
+  5.  NON-LLM AI MODELS
+================================================================================
+
+  MODEL / LIBRARY          TYPE               USED FOR                   FILE
+  ──────────────────────── ────────────────── ────────────────────────── ─────────
+  MediaPipe FaceMesh       Face landmarks     Focus / attention monitor  focus_tracker.py
+  OpenCV (cv2)             Computer vision    Image decode + solvePnP    focus_tracker.py
+  tesseract.js             OCR                Image text extraction      llm/router.ts
+  Edge TTS                 Neural TTS         Tutor slide narration      tutor/app.py
+  gTTS                     Cloud TTS          Podcast audio synthesis    podcast_logic.py
+  pdf-parse                Text extraction    PDF text extraction        pdfText.ts
+
+
+================================================================================
+  6.  ENVIRONMENT CONFIGURATION REFERENCE
+================================================================================
+
+  VARIABLE                   DEFAULT              USED BY
+  ────────────────────────── ──────────────────── ──────────────────────────────
+  GEMINI_API_KEY             (required)            All Gemini LLM calls + audio
+  GEMINI_MODEL               gemini-2.5-flash      Model name override
+  LLM_BACKEND                gemini                "gemini" | "ollama" | "auto"
+  OLLAMA_HOST                http://127.0.0.1:11434  Ollama server URL
+  OLLAMA_MODEL_TUTOR         llama2                Tutor slides, Q&A, ELI5
+  OLLAMA_MODEL_LIGHT         phi3:mini             Notes, bookmarks, recap
+  OLLAMA_MODEL_STRUCTURED    phi3                  Role-reversal, cheat sheets
+  OLLAMA_MODEL_VISION        llava                 Image OCR via Ollama
+  IMAGE_TEXT_BACKEND          (auto)                "gemini" | "tesseract" | "ollama"
+  PODCAST_SERVICE_URL        http://127.0.0.1:5001 Python podcast microservice
+  TUTOR_SERVICE_URL          http://127.0.0.1:5002 Python tutor microservice
+  EDGE_TTS_VOICE             en-US-ChristopherNeural  Edge TTS voice ID
+  ACADOMI_FFMPEG             (auto-detect)         FFmpeg binary path for podcast
+  ACADOMI_FFPROBE            (auto-detect)         FFprobe binary path for podcast
+  FLASK_PORT                 5001                  Podcast service port
+  TUTOR_PORT                 5002                  Tutor service port
+
+
+================================================================================
+  7.  END-TO-END DATA FLOW DIAGRAMS
+================================================================================
+
+
+─── UPLOAD → STUDY NOTES ───
+
+  User uploads PDF/Image/Audio
+       │
+       ▼
+  [Node] uploads.ts validates files
+       │
+       ├─ PDF  → pdf-parse (no LLM)
+       ├─ Image → Gemini Vision / tesseract.js / llava
+       └─ Audio → Gemini multimodal (audio→text)
+       │
+       ▼
+  extractedText (raw content)
+       │
+       ▼
+  synthesizeLearningNotes() → completeLightPrompt()
+       │                       (Gemini 2.5 Flash or phi3:mini)
+       ▼
+  processedContent (markdown study notes)
+       │
+       ▼
+  Saved to MongoDB (Upload document)
+
+
+─── TUTOR SESSION LIFECYCLE ───
+
+  User selects Upload → creates session
+       │
+       ▼
+  generateTutorSlidesAndScripts() → completeTutorPrompt()
+       │                           (Gemini 2.5 Flash or llama2)
+       ▼
+  6–14 slides with scripts + point timings
+       │
+       ▼
+  Saved to MongoDB (TutorSession document)
+       │
+       ▼
+  Frontend loads session → requests TTS per slide
+       │
+       ▼
+  [Node] tutorPyTts(script) → [Python] Edge TTS → MP3 audio
+       │
+       ▼
+  Audio plays in browser with synced bullet animations
+       │
+       ▼  (if student asks a question)
+  [Node] transcribeAudio() → Gemini (audio→text)
+       │
+       ▼
+  answerTutorQuestion() → completeTutorPrompt()
+       │                   (Gemini 2.5 Flash or llama2)
+       ▼
+  Answer text → TTS → Audio response
+
+
+─── PODCAST GENERATION ───
+
+  User clicks "Generate Podcast" on an upload
+       │
+       ▼
+  [Node] podcasts.ts → HTTP POST to Python podcast service
+       │                (forwards GEMINI_API_KEY + material text)
+       ▼
+  [Python] generate_script_from_gemini()
+       │   → Gemini 2.5 Flash (via google.generativeai SDK)
+       │   → Returns JSON dialogue [{speaker, text}, ...]
+       ▼
+  [Python] create_podcast_mp3_bytes()
+       │   → gTTS (Alice=co.uk, Bob=co.in) → individual MP3s
+       │   → pydub concatenation + 400ms gaps → combined MP3
+       ▼
+  audioBase64 + script returned to Node
+       │
+       ▼
+  [Node] stores MP3 in MongoDB GridFS
+         stores metadata in Podcast collection
+
+
+─── FOCUS MONITORING ───
+
+  Webcam frame captured in browser (every ~1–2 seconds)
+       │
+       ▼
+  [Node] tutor.ts → POST to Python /focus/analyze
+       │             (image buffer as base64)
+       ▼
+  [Python] focus_tracker.py
+       │   → cv2.imdecode → BGR frame
+       │   → MediaPipe FaceMesh → 478 face landmarks
+       │   → Head pose (solvePnP) + EAR + iris gaze
+       │   → Composite focus score (0–100)
+       ▼
+  JSON response: {focusVal, status, alarm, ...}
+       │
+       ▼
+  Frontend renders focus ring indicator
+
+
+================================================================================
+  SUMMARY TABLE: EVERY MODEL USED IN ACADOMI
+================================================================================
+
+  #   MODEL NAME                TYPE        PROVIDER       FEATURES USED FOR
+  ──  ────────────────────────  ──────────  ─────────────  ─────────────────────
+  1   Gemini 2.5 Flash          LLM         Google         • Study notes synthesis
+                                                           • Tutor slide generation
+                                                           • Tutor Q&A answers
+                                                           • ELI5 explanations
+                                                           • Role-reversal evaluation
+                                                           • Cheat sheet generation
+                                                           • Bookmark recap scripts
+                                                           • Bookmark follow-up chat
+                                                           • Image text extraction
+                                                           • Audio transcription
+                                                           • Podcast script generation
+
+  2   Llama 2                   LLM         Meta (Ollama)  • Tutor slides/Q&A/ELI5
+                                                             (Ollama fallback)
+
+  3   Phi-3                     LLM         Microsoft      • Role-reversal/cheat sheets
+                                 (Ollama)                    (Ollama fallback)
+
+  4   Phi-3 Mini                LLM         Microsoft      • Notes/bookmarks/recap
+                                 (Ollama)                    (Ollama fallback)
+
+  5   LLaVA                    Vision LLM   (Ollama)       • Image OCR (Ollama fallback)
+
+  6   Edge TTS                  Neural TTS  Microsoft      • All tutor narration audio
+
+  7   gTTS                      Cloud TTS   Google         • Podcast audio synthesis
+
+  8   MediaPipe FaceMesh        CV Model    Google         • Student focus monitoring
+
+  9   Tesseract.js              OCR         Open source    • Image text extraction
+                                                             (offline fallback)
+
+  10  pdf-parse                 Text parser Open source    • PDF text extraction
+                                                             (no AI involved)
+
+================================================================================
+  END OF DOCUMENT
+================================================================================

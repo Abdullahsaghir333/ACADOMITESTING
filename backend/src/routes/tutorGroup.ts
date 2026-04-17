@@ -1,3 +1,11 @@
+/**
+ * Group tutor: **Gemini** transcription; answers **Llama 2** (Ollama) — see `llm/router.ts`.
+ *
+ * | Line(s) | Model   | `gemini.ts` → `llm/router.ts` |
+ * |---------|---------|-------------------------------|
+ * | 518     | Gemini  | `transcribeAudio` → `transcribeAudioBuffer` L70 |
+ * | 523     | Llama 2 | `answerTutorQuestion` → `completeTutorPrompt` L30 |
+ */
 import { Router, type Response } from "express";
 import mongoose from "mongoose";
 import multer from "multer";
@@ -11,7 +19,7 @@ import { authMiddleware, type AuthedRequest } from "../middleware/auth.js";
 import { clearGroupChat } from "../socket/groupChatStore.js";
 import { getSocketIo } from "../socket/socketRegistry.js";
 import { answerTutorQuestion, transcribeAudio } from "../services/gemini.js";
-import { hasGeminiForTranscription, isLlmConfigured } from "../services/llm/llmReady.js";
+import { hasGeminiApiKey } from "../services/llm/llmReady.js";
 import { tutorPyTts } from "../services/tutorPythonClient.js";
 
 const router = Router();
@@ -456,16 +464,10 @@ router.post("/:id/tts", authMiddleware, async (req: AuthedRequest, res: Response
 });
 
 router.post("/:id/ask", authMiddleware, upload.single("audio"), async (req: AuthedRequest, res: Response) => {
-  if (!hasGeminiForTranscription()) {
+  if (!hasGeminiApiKey()) {
     return res.status(500).json({
       error:
-        "Speech transcription requires GEMINI_API_KEY on the server. Tutor answers use Ollama when LLM_BACKEND=ollama.",
-    });
-  }
-  if (!isLlmConfigured()) {
-    return res.status(500).json({
-      error:
-        "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
+        "Speech transcription requires GEMINI_API_KEY (Gemini). Tutor answers use Llama 2 via Ollama — ensure Ollama is running.",
     });
   }
 

@@ -7,7 +7,7 @@ AI-powered personalized learning platform (Final Year Project). Monorepo layout 
 | Path | Role |
 |------|------|
 | `frontend/` | Next.js (App Router, Tailwind v4) — UI |
-| `backend/` | Express + MongoDB + **Gemini and/or local Ollama** (see `LLM_BACKEND` in `backend/.env`) |
+| `backend/` | Express + MongoDB — **Ollama** (Llama 2 / Phi-3) for text; **Gemini** only for extraction/transcription |
 | `python/services/podcast/` | Flask microservice: Gemini dialogue script + gTTS audio (port 5001) |
 | `python/services/tutor/` | FastAPI: Edge TTS narration + MediaPipe webcam focus (port 5002) |
 
@@ -15,8 +15,8 @@ AI-powered personalized learning platform (Final Year Project). Monorepo layout 
 
 - **Node.js** 20+ (see `.nvmrc`)
 - **MongoDB Atlas** (or local Mongo via Docker Compose)
-- **Google AI Studio** API key for Gemini **if** you use Gemini for text/audio, or for podcast generation (`GEMINI_API_KEY` in `backend/.env`)
-- **Optional:** [Ollama](https://ollama.com/) for local models — e.g. `LLM_BACKEND=ollama`, pull `llama2`, `phi3`, `phi3:mini`; tutor flows use **`OLLAMA_MODEL_TUTOR` (default `llama2`)**, lighter tasks use **`OLLAMA_MODEL_LIGHT`** / **`OLLAMA_MODEL_STRUCTURED`**. Image OCR can use **Tesseract** offline (`IMAGE_TEXT_BACKEND=tesseract`, default when `LLM_BACKEND=ollama`).
+- **Google AI Studio** API key — for **image/audio extraction** (uploads), **mic transcription**, and **podcasts**; set `GEMINI_API_KEY` in `backend/.env`
+- **[Ollama](https://ollama.com/)** — **required** for all generated text: pull `llama2`, `phi3`, `phi3:mini` (**Llama 2** tutor, **Phi-3 Mini** notes/bookmarks, **Phi-3** cheat sheets / role reversal)
 
 ## Environment (backend)
 
@@ -26,12 +26,10 @@ Copy `backend/.env.example` to `backend/.env` and set:
 |----------|---------|
 | `MONGODB_URI` | MongoDB connection string |
 | `JWT_SECRET` | Long random string for signing login tokens |
-| `GEMINI_API_KEY` | Gemini API key when using cloud LLM or audio transcription / podcasts |
+| `GEMINI_API_KEY` | Upload image/audio extraction, mic transcription, podcasts (not for tutor/notes text) |
 | `FRONTEND_URL` | Next.js origin for CORS (e.g. `http://localhost:3000`) |
-| `LLM_BACKEND` | `gemini` (default) or `ollama` for local Llama 2 / Phi routing |
-| `OLLAMA_HOST`, `OLLAMA_MODEL_*` | See `backend/.env.example` — tutor = Llama 2 by default |
-| `IMAGE_TEXT_BACKEND` | `tesseract` \| `ollama` \| `gemini` for image text extraction |
-| `GEMINI_MODEL` | Optional; defaults to `gemini-2.5-flash` |
+| `OLLAMA_HOST`, `OLLAMA_MODEL_*` | Ollama URL and models — see `backend/.env.example` |
+| `GEMINI_MODEL` | Optional; defaults to `gemini-2.5-flash` (extraction / transcription only) |
 | `PODCAST_SERVICE_URL` | Base URL of the Python podcast API (default `http://127.0.0.1:5001`) |
 | `TUTOR_SERVICE_URL` | Base URL of the Python tutor API (default `http://127.0.0.1:5002`) |
 

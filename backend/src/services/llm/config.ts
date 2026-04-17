@@ -1,43 +1,34 @@
 /** Read env on each call — `dotenv` may load after imports. */
 
-export type LlmBackend = "gemini" | "ollama";
+/**
+ * Default Ollama tag names (consumed by `router.ts` `completeTutorPrompt` / `completeLightPrompt` / `completeStructuredPrompt`):
+ * | Lines   | Export                 | Default model id |
+ * |---------|------------------------|------------------|
+ * | 22–24   | ollamaModelTutor()     | llama2           |
+ * | 27–29   | ollamaModelLight()     | phi3:mini        |
+ * | 32–34   | ollamaModelStructured()| phi3             |
+ */
 
-export function getLlmBackend(): LlmBackend {
-  const raw = process.env.LLM_BACKEND?.trim().toLowerCase();
-  if (raw === "ollama") return "ollama";
-  if (raw === "gemini") return "gemini";
-  if (raw === "auto") {
-    return process.env.OLLAMA_HOST?.trim() ? "ollama" : "gemini";
-  }
-  return "gemini";
+/** Text generation always uses Ollama (Llama 2 / Phi-3 / Phi-3 Mini). Gemini is only for extraction in `router.ts`. */
+export function getLlmBackend(): "ollama" {
+  return "ollama";
 }
 
 export function ollamaBaseUrl(): string {
   return (process.env.OLLAMA_HOST ?? "http://127.0.0.1:11434").replace(/\/$/, "");
 }
 
+/** Tutor slides, Q&A, ELI5 — default Llama 2. */
 export function ollamaModelTutor(): string {
   return process.env.OLLAMA_MODEL_TUTOR?.trim() || "llama2";
 }
 
-/** Notes, bookmarks, recap — small / fast local model. */
+/** Study notes, bookmark recap, bookmark chat — default Phi-3 Mini. */
 export function ollamaModelLight(): string {
   return process.env.OLLAMA_MODEL_LIGHT?.trim() || "phi3:mini";
 }
 
-/** JSON evaluation, cheat sheets — slightly stronger local model. */
+/** Role-reversal evaluation, cheat sheets — default Phi-3. */
 export function ollamaModelStructured(): string {
   return process.env.OLLAMA_MODEL_STRUCTURED?.trim() || "phi3";
-}
-
-export function ollamaModelVision(): string {
-  return process.env.OLLAMA_MODEL_VISION?.trim() || "llava";
-}
-
-export type ImageTextBackend = "gemini" | "tesseract" | "ollama";
-
-export function getImageTextBackend(): ImageTextBackend {
-  const raw = process.env.IMAGE_TEXT_BACKEND?.trim().toLowerCase();
-  if (raw === "tesseract" || raw === "ollama" || raw === "gemini") return raw;
-  return getLlmBackend() === "ollama" ? "tesseract" : "gemini";
 }

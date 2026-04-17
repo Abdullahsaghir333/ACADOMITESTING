@@ -1,3 +1,11 @@
+/**
+ * Bookmarks: recap + chat use **Phi-3 Mini** (Ollama, `completeLightPrompt`); TTS stays Python Edge.
+ *
+ * | Line(s) | Model      | `gemini.ts` → `llm/router.ts` |
+ * |---------|------------|-------------------------------|
+ * | 227     | Phi-3 Mini | `generateBookmarkRecapScript` → L561 `completeLightPrompt` L37 |
+ * | 293     | Phi-3 Mini | `answerBookmarkQuestion` → L595 `completeLightPrompt` L37 |
+ */
 import { Router, type Response } from "express";
 import mongoose from "mongoose";
 
@@ -10,8 +18,6 @@ import {
   type BookmarkChatTurn,
 } from "../services/gemini.js";
 import { tutorPyTts } from "../services/tutorPythonClient.js";
-import { isLlmConfigured } from "../services/llm/llmReady.js";
-
 const router = Router();
 const MAX_BOOKMARKS_PER_USER = 400;
 
@@ -209,12 +215,6 @@ router.post("/:id/recap/tts", authMiddleware, async (req: AuthedRequest, res: Re
     let scriptForTts = (b.recapScript ?? "").trim();
 
     if (!scriptForTts) {
-      if (!isLlmConfigured()) {
-        return res.status(500).json({
-          error:
-            "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
-        });
-      }
       const uploadDoc = await Upload.findOne({ _id: b.sourceUploadId, userId: req.userId }).lean<UploadDoc | null>();
       const material =
         uploadDoc != null
@@ -253,13 +253,6 @@ router.post("/:id/recap/tts", authMiddleware, async (req: AuthedRequest, res: Re
 });
 
 router.post("/:id/chat", authMiddleware, async (req: AuthedRequest, res: Response) => {
-  if (!isLlmConfigured()) {
-    return res.status(500).json({
-      error:
-        "LLM is not configured. Set LLM_BACKEND=ollama with Ollama running, or set GEMINI_API_KEY.",
-    });
-  }
-
   const id = req.params.id;
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ error: "Invalid id." });
